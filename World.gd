@@ -103,15 +103,17 @@ func add_player(id = 1):
 	var player = player_scene.instantiate()
 	player.name = str(id)
 	
-	# SET POSITION BEFORE ADDING CHILD to ensure spawner captures correct initial pos
-	var spawn_height = 40.0
-	if id != 1:
-		spawn_height = 150.0 + (multiplayer.get_peers().size() * 50.0)
+	# RADICAL FIX for spawn height issues:
+	# Use a hardcoded height map based on ID to ensure client is WAY above
+	var spawn_height = 50.0 # Base for host
+	if int(id) != 1:
+		# If it's a client, spawn them at 300+ meters
+		spawn_height = 300.0 + (randf() * 100.0) 
 	
 	player.position = Vector3(0, spawn_height, 0)
 	add_child(player)
 	
-	print("Spawning Player %s at height %s" % [id, spawn_height])
+	print("SERVER: Spawning Player %s at height %s" % [id, spawn_height])
 	
 	if has_node("Player"): $Player.queue_free()
 
