@@ -11,8 +11,8 @@ var collectible_speed_scene = preload("res://CollectibleSpeed.tscn")
 
 # Environment
 var noise = FastNoiseLite.new()
-var terrain_size = 250.0 # Slightly larger
-var terrain_height = 20.0 # Higher peaks
+var terrain_size = 250.0 
+var terrain_height = 20.0 
 var terrain_resolution = 120 
 var lake_level = 0.0 
 
@@ -63,10 +63,8 @@ func setup_lighting_and_sky():
 	env.glow_enabled = true
 	world_env.environment = env
 	add_child(world_env)
-	
 	sun = DirectionalLight3D.new(); sun.name = "Sun"; sun.shadow_enabled = true
 	sun.light_color = Color(1.0, 1.0, 0.85); add_child(sun)
-	
 	moon = DirectionalLight3D.new(); moon.name = "Moon"; moon.shadow_enabled = true
 	moon.light_color = Color(0.5, 0.65, 1.0); moon.light_energy = 0.6; add_child(moon)
 
@@ -104,7 +102,13 @@ func add_player(id = 1):
 	if not multiplayer.is_server(): return
 	var player = player_scene.instantiate()
 	player.name = str(id); add_child(player)
-	player.position = Vector3(0, 35, 0) # HIGHER spawn point
+	
+	# STAGGERED Spawn points to prevent players from being under each other
+	# Host at 35, Client 1 at 55, Client 2 at 75, etc.
+	var spawn_height = 35.0 + (multiplayer.get_peers().size() * 20.0)
+	player.position = Vector3(0, spawn_height, 0)
+	print("Spawning Player %s at height %s" % [id, spawn_height])
+	
 	if has_node("Player"): $Player.queue_free()
 
 func setup_environment():
@@ -124,7 +128,7 @@ func create_terrain():
 			var px = float(x) / terrain_resolution; var pz = float(z) / terrain_resolution
 			var wx = (px - 0.5) * terrain_size; var wz = (pz - 0.5) * terrain_size
 			var y = noise.get_noise_2d(wx, wz) * terrain_height
-			if abs(wx) < 15 and abs(wz) < 15: y = lerp(y, 3.0, 0.95) # Flatter spawn area
+			if abs(wx) < 15 and abs(wz) < 15: y = lerp(y, 3.0, 0.95) 
 			var color = Color(0.2, 0.45, 0.1) 
 			if y < lake_level + 1.0: color = Color(0.95, 0.85, 0.3) 
 			elif y > 10.0: color = Color(0.4, 0.25, 0.1) 
