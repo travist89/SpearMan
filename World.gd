@@ -4,6 +4,7 @@ extends Node3D
 var peer = ENetMultiplayerPeer.new()
 @export var player_scene: PackedScene
 var spear_scene = preload("res://Spear.tscn")
+var rock_scene = preload("res://Rock.tscn")
 var enemy_scene = preload("res://Enemy.tscn")
 var target_scene = preload("res://Target.tscn")
 var collectible_health_scene = preload("res://CollectibleHealth.tscn")
@@ -28,6 +29,7 @@ func _ready():
 	spawner.spawn_path = get_path()
 	spawner.add_spawnable_scene(player_scene.resource_path)
 	spawner.add_spawnable_scene(spear_scene.resource_path)
+	spawner.add_spawnable_scene(rock_scene.resource_path) # ADDED ROCK
 	spawner.add_spawnable_scene(enemy_scene.resource_path)
 	spawner.add_spawnable_scene(target_scene.resource_path)
 	spawner.add_spawnable_scene(collectible_health_scene.resource_path)
@@ -102,19 +104,11 @@ func add_player(id = 1):
 	if not multiplayer.is_server(): return
 	var player = player_scene.instantiate()
 	player.name = str(id)
-	
-	# RADICAL FIX for spawn height issues:
-	# Use a hardcoded height map based on ID to ensure client is WAY above
-	var spawn_height = 50.0 # Base for host
+	var spawn_height = 40.0
 	if int(id) != 1:
-		# If it's a client, spawn them at 300+ meters
 		spawn_height = 300.0 + (randf() * 100.0) 
-	
 	player.position = Vector3(0, spawn_height, 0)
 	add_child(player)
-	
-	print("SERVER: Spawning Player %s at height %s" % [id, spawn_height])
-	
 	if has_node("Player"): $Player.queue_free()
 
 func setup_environment():
