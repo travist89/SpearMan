@@ -43,6 +43,3 @@ mesh = SubResource("BoxMesh_floor")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Floor" unique_id=1522858284]
 shape = SubResource("BoxShape3D_floor")
-
-[node name="Player" parent="." unique_id=300766236 instance=ExtResource("1_player")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
