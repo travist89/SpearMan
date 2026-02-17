@@ -13,7 +13,12 @@ func _on_body_entered(body):
 	# Only server handles collisions and game logic
 	if not multiplayer.is_server(): return
 
-	# Check if we hit a target
+	# Check if we hit an enemy or target
+	if body.has_method("take_damage") and not body.name.is_valid_int():
+		body.take_damage(damage)
+		queue_free()
+		return
+
 	if body.has_method("explode"):
 		# Trigger RPC so all clients see explosion and delete the object
 		body.explode.rpc()
@@ -24,8 +29,5 @@ func _on_body_entered(body):
 	# Simple logic to stick the spear into objects
 	if body is StaticBody3D or body is CSGShape3D:
 		freeze = true
-		# Optionally reparent to stick to moving objects
-		# but for now we just freeze physics
 		set_deferred("freeze", true)
-		# Disable collision to prevent further interaction
 		$CollisionShape3D.set_deferred("disabled", true)

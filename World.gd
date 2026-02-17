@@ -12,9 +12,9 @@ var collectible_speed_scene = preload("res://CollectibleSpeed.tscn")
 # Environment
 var noise = FastNoiseLite.new()
 var terrain_size = 200.0
-var terrain_height = 15.0 # Increased height for more variety
+var terrain_height = 15.0 
 var terrain_resolution = 100 
-var lake_level = -2.0 # Height at which "mustard" appears
+var lake_level = -2.0 
 
 func _ready():
 	# Networking Spawner
@@ -81,7 +81,7 @@ func add_player(id = 1):
 	var player = player_scene.instantiate()
 	player.name = str(id)
 	add_child(player)
-	player.position = Vector3(0, 15, 0) # Spawn higher
+	player.position = Vector3(0, 15, 0) 
 	
 	if has_node("Player"):
 		$Player.queue_free()
@@ -92,7 +92,7 @@ func setup_environment():
 	
 	if multiplayer.is_server():
 		scatter_targets(30)
-		scatter_enemies(15)
+		scatter_enemies(12, 5) # 12 small, 5 big
 		scatter_collectibles(20)
 		scatter_pretzel_trees(60)
 
@@ -104,21 +104,16 @@ func create_terrain():
 		for x in range(terrain_resolution + 1):
 			var percent_x = float(x) / terrain_resolution
 			var percent_z = float(z) / terrain_resolution
-			
 			var world_x = (percent_x - 0.5) * terrain_size
 			var world_z = (percent_z - 0.5) * terrain_size
 			var y = noise.get_noise_2d(world_x, world_z) * terrain_height
-			
-			# Flatten spawn area
 			if abs(world_x) < 10 and abs(world_z) < 10:
-				y = lerp(y, 2.0, 0.8) # Keep it slightly above water
-			
-			var color = Color(0.4, 0.25, 0.1) # Bread/Crust brown
+				y = lerp(y, 2.0, 0.8)
+			var color = Color(0.4, 0.25, 0.1) 
 			if y < lake_level + 0.5:
-				color = Color(0.8, 0.7, 0.2) # Saturated yellow for "sandy mustard" edges
+				color = Color(0.8, 0.7, 0.2) 
 			elif y > 5.0:
-				color = Color(0.5, 0.3, 0.15) # Darker crust
-				
+				color = Color(0.5, 0.3, 0.15) 
 			st.set_color(color)
 			st.set_uv(Vector2(percent_x, percent_z))
 			st.add_vertex(Vector3(world_x, y, world_z))
@@ -135,18 +130,15 @@ func create_terrain():
 
 	st.generate_normals()
 	var mesh = st.commit()
-	
 	var terrain = StaticBody3D.new()
 	terrain.name = "Terrain"
 	add_child(terrain)
-	
 	var mesh_inst = MeshInstance3D.new()
 	mesh_inst.mesh = mesh
 	var mat = StandardMaterial3D.new()
 	mat.vertex_color_use_as_albedo = true
 	mesh_inst.material_override = mat
 	terrain.add_child(mesh_inst)
-	
 	var col = CollisionShape3D.new()
 	col.shape = mesh.create_trimesh_shape()
 	terrain.add_child(col)
@@ -154,29 +146,24 @@ func create_terrain():
 func create_mustard_lakes():
 	var lake_mesh = PlaneMesh.new()
 	lake_mesh.size = Vector2(terrain_size, terrain_size)
-	
 	var lake_inst = MeshInstance3D.new()
 	lake_inst.mesh = lake_mesh
 	lake_inst.position.y = lake_level
-	
 	var mat = StandardMaterial3D.new()
-	mat.albedo_color = Color(0.9, 0.8, 0.0) # Bright Mustard Yellow
-	mat.roughness = 0.1 # Shiny
+	mat.albedo_color = Color(0.9, 0.8, 0.0) 
+	mat.roughness = 0.1 
 	mat.emission_enabled = true
-	mat.emission = Color(0.2, 0.15, 0) # Subtle glow
+	mat.emission = Color(0.2, 0.15, 0) 
 	lake_inst.material_override = mat
-	
 	add_child(lake_inst)
 
 func scatter_pretzel_trees(count):
 	for i in range(count):
 		var x = randf_range(-terrain_size/2 * 0.9, terrain_size/2 * 0.9)
 		var z = randf_range(-terrain_size/2 * 0.9, terrain_size/2 * 0.9)
-		
 		var y = noise.get_noise_2d(x, z) * terrain_height
 		if y < lake_level + 1.0 or (abs(x) < 12 and abs(z) < 12):
-			continue # Don't spawn in mustard or at start
-			
+			continue
 		create_pretzel_tree_at(Vector3(x, y, z))
 
 func create_pretzel_tree_at(pos):
@@ -184,22 +171,17 @@ func create_pretzel_tree_at(pos):
 	tree.name = "PretzelTree"
 	add_child(tree)
 	tree.position = pos
-	
-	# Trunk (Pretzel Stick)
 	var trunk = MeshInstance3D.new()
 	var trunk_mesh = CylinderMesh.new()
 	trunk_mesh.top_radius = 0.2
 	trunk_mesh.bottom_radius = 0.3
 	trunk_mesh.height = 3.0
 	trunk.mesh = trunk_mesh
-	
 	var trunk_mat = StandardMaterial3D.new()
-	trunk_mat.albedo_color = Color(0.4, 0.2, 0.1) # Dark brown pretzel
+	trunk_mat.albedo_color = Color(0.4, 0.2, 0.1) 
 	trunk.material_override = trunk_mat
 	trunk.position.y = 1.5
 	tree.add_child(trunk)
-	
-	# Pretzel "Leaves" (Torus shape or twisted loops)
 	for i in range(3):
 		var loop = MeshInstance3D.new()
 		var loop_mesh = TorusMesh.new()
@@ -211,17 +193,14 @@ func create_pretzel_tree_at(pos):
 		loop.rotation.x = randf_range(0, PI)
 		loop.rotation.y = randf_range(0, PI)
 		tree.add_child(loop)
-		
-		# Salt Grains
 		for j in range(5):
 			var salt = MeshInstance3D.new()
 			var salt_mesh = BoxMesh.new()
 			salt_mesh.size = Vector3(0.1, 0.1, 0.1)
 			salt.mesh = salt_mesh
 			var salt_mat = StandardMaterial3D.new()
-			salt_mat.albedo_color = Color(1, 1, 1) # White salt
+			salt_mat.albedo_color = Color(1, 1, 1) 
 			salt.material_override = salt_mat
-			
 			var angle = randf_range(0, TAU)
 			var radius = 0.7
 			salt.position = Vector3(cos(angle)*radius, 0, sin(angle)*radius)
@@ -242,16 +221,28 @@ func create_target_at(pos):
 	target.look_at(Vector3(0, pos.y, 0), Vector3.UP)
 	target.rotate_object_local(Vector3.RIGHT, deg_to_rad(90))
 
-func scatter_enemies(count):
-	for i in range(count):
+func scatter_enemies(small_count, big_count):
+	for i in range(small_count):
 		var x = randf_range(-terrain_size/2 * 0.9, terrain_size/2 * 0.9)
 		var z = randf_range(-terrain_size/2 * 0.9, terrain_size/2 * 0.9)
 		var y = noise.get_noise_2d(x, z) * terrain_height
 		if y < lake_level: continue
-		create_enemy_at(Vector3(x, y + 1.0, z))
+		create_enemy_at(Vector3(x, y + 1.0, z), false)
+	
+	for i in range(big_count):
+		var x = randf_range(-terrain_size/2 * 0.9, terrain_size/2 * 0.9)
+		var z = randf_range(-terrain_size/2 * 0.9, terrain_size/2 * 0.9)
+		var y = noise.get_noise_2d(x, z) * terrain_height
+		if y < lake_level: continue
+		create_enemy_at(Vector3(x, y + 2.0, z), true)
 
-func create_enemy_at(pos):
+func create_enemy_at(pos, is_big):
 	var enemy = enemy_scene.instantiate()
+	if is_big:
+		# Attach BigEnemy script dynamically or swap scene?
+		# Swapping script is easier if structure is same.
+		enemy.set_script(load("res://BigEnemy.gd"))
+		enemy.name = "BigEnemy"
 	add_child(enemy)
 	enemy.position = pos
 
