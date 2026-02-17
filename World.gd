@@ -103,11 +103,16 @@ func add_player(id = 1):
 	var player = player_scene.instantiate()
 	player.name = str(id); add_child(player)
 	
-	# STAGGERED Spawn points to prevent players from being under each other
-	# Host at 35, Client 1 at 55, Client 2 at 75, etc.
-	var spawn_height = 35.0 + (multiplayer.get_peers().size() * 20.0)
-	player.position = Vector3(0, spawn_height, 0)
-	print("Spawning Player %s at height %s" % [id, spawn_height])
+	# STAGGERED Spawn points with MUCH larger gaps
+	# Host (ID 1) at 35
+	# First Client (ID > 1) at 100
+	# Second Client at 150, etc.
+	var spawn_height = 35.0
+	if id != 1:
+		spawn_height = 100.0 + (multiplayer.get_peers().size() * 50.0)
+	
+	player.global_position = Vector3(0, spawn_height, 0)
+	print("Spawning Player %s at global height %s" % [id, spawn_height])
 	
 	if has_node("Player"): $Player.queue_free()
 
