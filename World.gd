@@ -101,18 +101,17 @@ func start_join():
 func add_player(id = 1):
 	if not multiplayer.is_server(): return
 	var player = player_scene.instantiate()
-	player.name = str(id); add_child(player)
+	player.name = str(id)
 	
-	# STAGGERED Spawn points with MUCH larger gaps
-	# Host (ID 1) at 35
-	# First Client (ID > 1) at 100
-	# Second Client at 150, etc.
-	var spawn_height = 35.0
+	# SET POSITION BEFORE ADDING CHILD to ensure spawner captures correct initial pos
+	var spawn_height = 40.0
 	if id != 1:
-		spawn_height = 100.0 + (multiplayer.get_peers().size() * 50.0)
+		spawn_height = 150.0 + (multiplayer.get_peers().size() * 50.0)
 	
-	player.global_position = Vector3(0, spawn_height, 0)
-	print("Spawning Player %s at global height %s" % [id, spawn_height])
+	player.position = Vector3(0, spawn_height, 0)
+	add_child(player)
+	
+	print("Spawning Player %s at height %s" % [id, spawn_height])
 	
 	if has_node("Player"): $Player.queue_free()
 
