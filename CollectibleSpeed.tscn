@@ -1,0 +1,36 @@
+[gd_scene format=3 uid="uid://d2f3g4h5i6j7"]
+
+[ext_resource type="Script" path="res://Collectible.gd" id="1_collectible"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_c"]
+radius = 0.5
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_s"]
+albedo_color = Color(0, 1, 1, 1)
+emission_enabled = true
+emission = Color(0, 1, 1, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_s"]
+material = SubResource("StandardMaterial3D_s")
+radius = 0.3
+height = 0.6
+
+[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_c"]
+properties/0/path = NodePath(".:position")
+properties/0/spawn = true
+properties/0/replication_mode = 1
+
+[node name="CollectibleSpeed" type="Area3D"]
+script = ExtResource("1_collectible")
+type = "speed"
+amount = 2.0
+duration = 5.0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("SphereShape3D_c")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_s")
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
+replication_config = SubResource("SceneReplicationConfig_c")
