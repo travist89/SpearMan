@@ -29,7 +29,7 @@ func _ready():
 	spawner.spawn_path = get_path()
 	spawner.add_spawnable_scene(player_scene.resource_path)
 	spawner.add_spawnable_scene(spear_scene.resource_path)
-	spawner.add_spawnable_scene(rock_scene.resource_path) # ADDED ROCK
+	spawner.add_spawnable_scene(rock_scene.resource_path)
 	spawner.add_spawnable_scene(enemy_scene.resource_path)
 	spawner.add_spawnable_scene(target_scene.resource_path)
 	spawner.add_spawnable_scene(collectible_health_scene.resource_path)
@@ -104,11 +104,22 @@ func add_player(id = 1):
 	if not multiplayer.is_server(): return
 	var player = player_scene.instantiate()
 	player.name = str(id)
-	var spawn_height = 40.0
-	if int(id) != 1:
-		spawn_height = 300.0 + (randf() * 100.0) 
-	player.position = Vector3(0, spawn_height, 0)
+	
+	# RADICAL POSITION STAGGERING
+	var spawn_pos = Vector3.ZERO
+	if int(id) == 1:
+		spawn_pos = Vector3(0, 50, 0) # Host
+	else:
+		# Clients spawn at different X/Z locations and MUCH higher
+		var offset_angle = randf() * TAU
+		var offset_radius = 5.0 + (multiplayer.get_peers().size() * 2.0)
+		spawn_pos = Vector3(cos(offset_angle) * offset_radius, 250.0 + (multiplayer.get_peers().size() * 50.0), sin(offset_angle) * offset_radius)
+	
+	player.position = spawn_pos
 	add_child(player)
+	
+	print("SERVER: Spawning Player %s at %s" % [id, spawn_pos])
+	
 	if has_node("Player"): $Player.queue_free()
 
 func setup_environment():
