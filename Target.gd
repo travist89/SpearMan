@@ -1,44 +1,32 @@
+# Target script for "Age of Manwe"
+# Targets are simple objects that explode when hit by a projectile.
 extends StaticBody3D
 
+# This function is called by projectiles (Spear/Rock) when they hit the target
 @rpc("any_peer", "call_local", "reliable")
 func explode():
-	print("Target Exploded!")
+	print("Target Hit!")
+	# Create a simple visual effect before disappearing
 	spawn_particles()
-	
-	# Force deletion on all clients to ensure it disappears
+	# remove the target from the scene
 	queue_free()
 
 func spawn_particles():
-	# Create explosion particles
+	# CPUParticles3D are easier to use for beginners than GPU particles
 	var particles = CPUParticles3D.new()
-	# Add to root so it persists after Target queue_free
+	# Add particles to the scene root so they don't disappear when the target is deleted
 	get_tree().root.add_child(particles)
 	particles.global_position = global_position
 	
-	# Configure particles
+	# Explosion look and feel settings
 	particles.emitting = true
-	particles.amount = 20
-	particles.lifetime = 1.0
+	particles.amount = 15
 	particles.one_shot = true
 	particles.explosiveness = 1.0
-	particles.spread = 180.0
-	particles.gravity = Vector3(0, -10, 0)
-	particles.initial_velocity_min = 5.0
-	particles.initial_velocity_max = 10.0
-	particles.scale_amount_min = 0.5
-	particles.scale_amount_max = 1.0
+	particles.initial_velocity_min = 3.0
+	particles.initial_velocity_max = 6.0
 	
-	var mat = StandardMaterial3D.new()
-	mat.albedo_color = Color(1, 0.5, 0) # Orange
-	mat.emission_enabled = true
-	mat.emission = Color(1, 0.5, 0)
-	
-	var mesh = BoxMesh.new()
-	mesh.size = Vector3(0.2, 0.2, 0.2)
-	mesh.material = mat
-	particles.mesh = mesh
-	
-	# Clean up particles after they finish
+	# Automatically clean up the particles after a delay
 	await get_tree().create_timer(1.0).timeout
 	if is_instance_valid(particles):
 		particles.queue_free()
