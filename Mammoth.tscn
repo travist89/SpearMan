@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://d3x4y506a7b8"]
 
-[ext_resource type="Script" path="res://Mammoth.gd" id="1_mammoth"]
+[ext_resource type="Script" uid="uid://56jigdorx2gv" path="res://Mammoth.gd" id="1_mammoth"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_m"]
 radius = 1.5
@@ -8,7 +8,6 @@ height = 4.0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_fur"]
 albedo_color = Color(0.3, 0.2, 0.1, 1)
-roughness = 1.0
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_body"]
 material = SubResource("StandardMaterial3D_fur")
@@ -17,7 +16,7 @@ height = 4.0
 
 [sub_resource type="BoxMesh" id="BoxMesh_head"]
 material = SubResource("StandardMaterial3D_fur")
-size = Vector3(1.5, 1.5, 2.0)
+size = Vector3(1.5, 1.5, 2)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ivory"]
 albedo_color = Color(0.9, 0.9, 0.8, 1)
@@ -27,7 +26,6 @@ roughness = 0.4
 material = SubResource("StandardMaterial3D_ivory")
 top_radius = 0.1
 bottom_radius = 0.2
-height = 2.0
 
 [sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_m"]
 properties/0/path = NodePath(".:position")
@@ -40,28 +38,28 @@ properties/2/path = NodePath(".:health")
 properties/2/spawn = true
 properties/2/replication_mode = 2
 
-[node name="Mammoth" type="CharacterBody3D"]
+[node name="Mammoth" type="CharacterBody3D" unique_id=1448199783]
 script = ExtResource("1_mammoth")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 0, 2, 0)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1327181917]
+transform = Transform3D(-0.9999825, -0.005916712, 2.5862776e-10, 0, -4.37114e-08, -1, 0.005916712, -0.9999825, 4.371063e-08, 0.002958356, 2, 1.0176032)
 shape = SubResource("CapsuleShape3D_m")
 
-[node name="Body" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 0, 2, 0)
+[node name="Body" type="MeshInstance3D" parent="." unique_id=1509372251]
+transform = Transform3D(-0.9999825, -0.005916712, 2.5862776e-10, 0, -4.37114e-08, -1, 0.005916712, -0.9999825, 4.371063e-08, 0.002958356, 2, 1.0176032)
 mesh = SubResource("CapsuleMesh_body")
 
-[node name="Head" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.5, 1.5)
+[node name="Head" type="MeshInstance3D" parent="." unique_id=1371691236]
+transform = Transform3D(-0.9999825, 0, -0.005916712, 0, 1, 0, 0.005916712, 0, -0.9999825, -0.005916712, 3.5, -0.4823705)
 mesh = SubResource("BoxMesh_head")
 
-[node name="TuskLeft" type="MeshInstance3D" parent="Head"]
+[node name="TuskLeft" type="MeshInstance3D" parent="Head" unique_id=322081414]
 transform = Transform3D(1, 0, 0, 0, 0.5, 0.866025, 0, -0.866025, 0.5, -0.5, -0.5, 1.2)
 mesh = SubResource("CylinderMesh_tusk")
 
-[node name="TuskRight" type="MeshInstance3D" parent="Head"]
+[node name="TuskRight" type="MeshInstance3D" parent="Head" unique_id=1017374127]
 transform = Transform3D(1, 0, 0, 0, 0.5, 0.866025, 0, -0.866025, 0.5, 0.5, -0.5, 1.2)
 mesh = SubResource("CylinderMesh_tusk")
 
-[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="." unique_id=828355395]
 replication_config = SubResource("SceneReplicationConfig_m")

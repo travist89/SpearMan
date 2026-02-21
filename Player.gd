@@ -2,7 +2,7 @@ extends CharacterBody3D
 
 @export var speed = 5.0
 @export var sprint_speed = 10.0
-@export var jump_velocity = 4.5
+@export var jump_velocity = 10.0 # Increased jump height
 @export var mouse_sensitivity = 0.003
 @export var throw_force = 45.0
 @export var spear_scene: PackedScene

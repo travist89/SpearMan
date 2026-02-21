@@ -78,4 +78,10 @@ Increased intensity and density!
 -   **High Density Spawning**: Increased the enemy population limit to 200 and set the spawn rate to 1 enemy per second on the server.
 -   **Mammoth Dominance**: Increased the spawn probability of Mammoths to 40%.
 
+## v1.3 Release Notes ⚡
+Map and Movement Overhaul!
+-   **Flatter Terrain**: The whole map has been significantly flattened for better visibility and combat flow.
+-   **Enhanced Jump**: Players can now jump significantly higher, allowing for more vertical mobility.
+-   **Network Stability**: Verified all game objects are synchronized for all players.
+
 Enjoy making your game! 🚀

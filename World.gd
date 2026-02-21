@@ -14,7 +14,7 @@ var peer = ENetMultiplayerPeer.new()
 # Environment
 var noise = FastNoiseLite.new()
 var terrain_size = 250.0 
-var terrain_height = 20.0 
+var terrain_height = 6.0 # Much flatter terrain
 var terrain_resolution = 120 
 var lake_level = 0.0 
 
@@ -26,6 +26,7 @@ var moon: DirectionalLight3D
 var world_env: WorldEnvironment
 
 var spawner: MultiplayerSpawner
+var spawn_id_counter = 0
 
 func _ready():
 	spawner = MultiplayerSpawner.new()
@@ -239,10 +240,11 @@ func _spawn_node(data):
 	# Dispatch to correct spawn logic based on data type
 	if data.has("id"):
 		return _spawn_player_impl(data)
-	elif data.has("is_big"):
-		return _spawn_enemy(data)
-	elif data.has("type") and data["type"] == "mammoth":
-		return _spawn_mammoth(data)
+	elif data.has("is_big") or (data.has("type") and data["type"] == "mammoth"):
+		if data.has("type") and data["type"] == "mammoth":
+			return _spawn_mammoth(data)
+		else:
+			return _spawn_enemy(data)
 	return null
 
 func _spawn_player_impl(data):
@@ -291,19 +293,22 @@ func _spawn_player_impl(data):
 func _spawn_enemy(data):
 	var pos = data["pos"]
 	var is_big = data["is_big"]
+	var spawn_id = data["spawn_id"]
 	
 	var enemy = enemy_scene.instantiate()
+	# Explicitly name the node with a unique ID to prevent path collisions
+	enemy.name = "Enemy_" + str(spawn_id)
 	enemy.position = pos
 	enemy.is_big = is_big
-	
-	if is_big:
-		enemy.name = "BigEnemy" # Godot handles duplicate names (BigEnemy2, etc.)
-	
 	return enemy
 
 func _spawn_mammoth(data):
 	var pos = data["pos"]
+	var spawn_id = data["spawn_id"]
+	
 	var mammoth = mammoth_scene.instantiate()
+	# Explicitly name the node with a unique ID to prevent path collisions
+	mammoth.name = "Mammoth_" + str(spawn_id)
 	mammoth.position = pos
 	return mammoth
 
@@ -383,9 +388,8 @@ func scatter_enemies(small_count, big_count):
 		create_enemy_at(Vector3(x, y + 2.0, z), true)
 
 func create_enemy_at(pos, is_big):
-	# Use spawner with custom data to spawn enemies
-	# This ensures 'is_big' property is set on both server and client at spawn time
-	spawner.spawn({"pos": pos, "is_big": is_big})
+	spawn_id_counter += 1
+	spawner.spawn({"pos": pos, "is_big": is_big, "spawn_id": spawn_id_counter})
 
 func scatter_mammoths(count):
 	for i in range(count):
@@ -394,7 +398,8 @@ func scatter_mammoths(count):
 		create_mammoth_at(Vector3(x, y + 2.0, z)) # Spawn higher up
 
 func create_mammoth_at(pos):
-	spawner.spawn({"pos": pos, "type": "mammoth"})
+	spawn_id_counter += 1
+	spawner.spawn({"pos": pos, "type": "mammoth", "spawn_id": spawn_id_counter})
 
 var spawn_timer = 0.0
 var spawn_interval = 1.0 # Spawn every 1 second (much faster)
