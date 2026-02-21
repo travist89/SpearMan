@@ -3,12 +3,12 @@ extends Node3D
 # Networking
 var peer = ENetMultiplayerPeer.new()
 @export var player_scene: PackedScene
-var spear_scene = preload("res://Spear.tscn")
-var rock_scene = preload("res://Rock.tscn")
-var enemy_scene = preload("res://Enemy.tscn")
-var target_scene = preload("res://Target.tscn")
-var collectible_health_scene = preload("res://CollectibleHealth.tscn")
-var collectible_speed_scene = preload("res://CollectibleSpeed.tscn")
+@export var spear_scene: PackedScene = preload("res://Spear.tscn")
+@export var rock_scene: PackedScene = preload("res://Rock.tscn")
+@export var enemy_scene: PackedScene = preload("res://Enemy.tscn")
+@export var target_scene: PackedScene = preload("res://Target.tscn")
+@export var collectible_health_scene: PackedScene = preload("res://CollectibleHealth.tscn")
+@export var collectible_speed_scene: PackedScene = preload("res://CollectibleSpeed.tscn")
 
 # Environment
 var noise = FastNoiseLite.new()
@@ -24,9 +24,15 @@ var sun: DirectionalLight3D
 var moon: DirectionalLight3D
 var world_env: WorldEnvironment
 
+var spawner: MultiplayerSpawner
+
 func _ready():
-	var spawner = MultiplayerSpawner.new()
+	spawner = MultiplayerSpawner.new()
+	spawner.name = "MultiplayerSpawner" # Ensure consistent name for replication
 	spawner.spawn_path = get_path()
+	# Register a custom spawn function to handle initialization (position, id) deterministically on both sides
+	spawner.spawn_function = _spawn_player
+	
 	spawner.add_spawnable_scene(player_scene.resource_path)
 	spawner.add_spawnable_scene(spear_scene.resource_path)
 	spawner.add_spawnable_scene(rock_scene.resource_path)
@@ -37,13 +43,19 @@ func _ready():
 	add_child(spawner)
 	
 	create_multiplayer_ui()
-	setup_lighting_and_sky()
+	setup_lighting_and_sky() # Keep this if scene lighting is insufficient, but generally World.tscn handles it.
 	
 	# Use a fixed seed for deterministic generation across all clients
 	seed(12345)
+	# Explicitly set all noise parameters to ensure consistency across platforms
 	noise.seed = 12345 
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	noise.frequency = 0.012
 	noise.fractal_octaves = 5
+	noise.fractal_lacunarity = 2.0
+	noise.fractal_gain = 0.5
+	noise.domain_warp_enabled = false
 	
 	# Only the server generates the environment objects (enemies, collectibles, etc.)
 	# The MultiplayerSpawner will replicate these to clients.
@@ -65,25 +77,40 @@ func _process(delta):
 	update_day_night_cycle(delta)
 
 func setup_lighting_and_sky():
-	world_env = WorldEnvironment.new()
-	var env = Environment.new()
-	var sky = Sky.new()
-	var sky_mat = ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.4, 0.6, 1.0)
-	sky_mat.sky_horizon_color = Color(0.6, 0.5, 0.4)
-	sky_mat.ground_bottom_color = Color(0.2, 0.1, 0.1)
-	sky.sky_material = sky_mat
-	env.sky = sky
-	env.background_mode = Environment.BG_SKY
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.glow_enabled = true
-	world_env.environment = env
-	add_child(world_env)
-	sun = DirectionalLight3D.new(); sun.name = "Sun"; sun.shadow_enabled = true
-	sun.light_color = Color(1.0, 1.0, 0.85); add_child(sun)
-	moon = DirectionalLight3D.new(); moon.name = "Moon"; moon.shadow_enabled = true
-	moon.light_color = Color(0.5, 0.65, 1.0); moon.light_energy = 0.6; add_child(moon)
+	# Try to find existing nodes from World.tscn first
+	if has_node("WorldEnvironment"):
+		world_env = $WorldEnvironment
+	else:
+		world_env = WorldEnvironment.new()
+		add_child(world_env)
+		
+	if world_env.environment == null:
+		var env = Environment.new()
+		var sky = Sky.new()
+		var sky_mat = ProceduralSkyMaterial.new()
+		sky_mat.sky_top_color = Color(0.4, 0.6, 1.0)
+		sky_mat.sky_horizon_color = Color(0.6, 0.5, 0.4)
+		sky_mat.ground_bottom_color = Color(0.2, 0.1, 0.1)
+		sky.sky_material = sky_mat
+		env.sky = sky
+		env.background_mode = Environment.BG_SKY
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+		env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+		env.glow_enabled = true
+		world_env.environment = env
+
+	if has_node("DirectionalLight3D"):
+		sun = $DirectionalLight3D
+	else:
+		sun = DirectionalLight3D.new(); sun.name = "Sun"; sun.shadow_enabled = true
+		sun.light_color = Color(1.0, 1.0, 0.85); add_child(sun)
+		
+	# Moon is likely not in tscn, so create it if missing
+	if has_node("Moon"):
+		moon = $Moon
+	else:
+		moon = DirectionalLight3D.new(); moon.name = "Moon"; moon.shadow_enabled = true
+		moon.light_color = Color(0.5, 0.65, 1.0); moon.light_energy = 0.6; add_child(moon)
 
 func update_day_night_cycle(delta):
 	time += delta
@@ -127,8 +154,8 @@ func start_host():
 	if peer.get_connection_status() != MultiplayerPeer.CONNECTION_DISCONNECTED: return
 	peer.create_server(13579); multiplayer.multiplayer_peer = peer
 	
-	# Don't auto-spawn players on connect anymore, wait for them to request spawn
-	# multiplayer.peer_connected.connect(add_player) 
+	# When a peer connects, sync the world settings to ensure deterministic terrain
+	multiplayer.peer_connected.connect(func(id): sync_world_settings.rpc_id(id, 12345))
 	
 	# Hide connection buttons, show spawn selection
 	connection_ui.visible = false
@@ -158,8 +185,57 @@ func request_spawn_at(location_index):
 func hide_spawn_ui_on_client():
 	spawn_ui.visible = false
 
+@rpc("authority", "call_remote")
+func sync_world_settings(server_seed):
+	print("Syncing world settings with seed: ", server_seed)
+	seed(server_seed)
+	
+	# Re-configure noise to match server exactly
+	noise.seed = server_seed
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	noise.frequency = 0.012
+	noise.fractal_octaves = 5
+	noise.fractal_lacunarity = 2.0
+	noise.fractal_gain = 0.5
+	noise.domain_warp_enabled = false
+	
+	# Regenerate the world with the correct seed
+	regenerate_world()
+
+func regenerate_world():
+	# Clear existing terrain and environment
+	if has_node("Terrain"): $Terrain.queue_free()
+	if has_node("MustardLake"): $MustardLake.queue_free()
+	# Clear static objects
+	for child in get_children():
+		if child.name.begins_with("PretzelTree") or child.name.begins_with("@PretzelTree"):
+			child.queue_free()
+		if child.name.begins_with("CroutonRock") or child.name.begins_with("@MeshInstance3D"): # Rocks are mesh instances
+			# Better to group them or tag them, but for now we regenerate
+			if child is MeshInstance3D and child.mesh is BoxMesh: # Heuristic for rocks
+				child.queue_free()
+	
+	# Re-create environment
+	create_terrain()
+	create_mustard_lakes()
+	scatter_pretzel_trees(60)
+	scatter_crouton_rocks(40)
+
 func add_player(id = 1, location_index = 2):
 	if not multiplayer.is_server(): return
+	
+	# Instead of manual instantiation, we use the spawner's spawn function.
+	# We pass the data needed to construct the player (id, location_index)
+	# The spawner will call _spawn_player on the server AND all clients with this data.
+	spawner.spawn({"id": id, "location_index": location_index})
+	
+	if has_node("Player"): $Player.queue_free()
+
+func _spawn_player(data):
+	var id = data["id"]
+	var location_index = data["location_index"]
+	
 	var player = player_scene.instantiate()
 	player.name = str(id)
 	
@@ -171,25 +247,37 @@ func add_player(id = 1, location_index = 2):
 	else: # Altar
 		spawn_pos = Vector3(0, 0, 0)
 	
-	# Add some randomness to prevent exact stacking if multiple players choose same spot
-	spawn_pos.x += randf_range(-2, 2)
-	spawn_pos.z += randf_range(-2, 2)
+	# Deterministic randomness for stacking based on ID
+	# We use the ID to seed a local RNG or just add a fixed offset to ensure
+	# clients and server calculate the exact same position if they need to.
+	# However, since position is synced, the most important thing is that
+	# the server sets it correctly.
+	# BUT, since this function runs on Client too, we want it to be close.
+	# Ideally, we pass the exact position in 'data' from the server.
+	# But calculating it here is fine if 'randf' is synced or if we don't use randf.
 	
-	# Calculate terrain height at spawn position
-	# Note: noise.get_noise_2d takes world coordinates directly as used in create_terrain
+	# Actually, best practice: Server calculates position and passes it in data.
+	# But 'spawner.spawn' takes a single argument.
+	# If we calculate random position here, we must ensure RNG is synced.
+	# We synced seed in _ready. But RNG state might diverge.
+	# So, we should avoid randf() here OR pass the random offset in data.
+	
+	# Let's simplify: We'll calculate the 'ideal' position here.
+	# The slight randomness can be skipped or deterministic based on ID.
+	spawn_pos.x += (id % 5) * 0.5 - 1.0 # Deterministic offset
+	spawn_pos.z += (id % 3) * 0.5 - 1.0
+	
+	# Terrain height calculation
+	# Since we synced the seed and regenerated world, noise should be identical.
 	var y = noise.get_noise_2d(spawn_pos.x, spawn_pos.z) * terrain_height
-	
-	# Apply the same flattening logic for the center area as in create_terrain
 	if abs(spawn_pos.x) < 15 and abs(spawn_pos.z) < 15: 
 		y = lerp(y, 3.0, 0.95)
-		
-	# Set spawn height well above the terrain to avoid getting stuck
-	spawn_pos.y = y + 10.0
+	
+	# Set safe height
+	spawn_pos.y = max(y + 10.0, 50.0)
 	
 	player.position = spawn_pos
-	add_child(player)
-	
-	if has_node("Player"): $Player.queue_free()
+	return player
 
 # setup_environment function removed as its logic was moved to _ready
 
@@ -219,7 +307,8 @@ func create_terrain():
 	var col = CollisionShape3D.new(); col.shape = mesh_inst.mesh.create_trimesh_shape(); terrain.add_child(col)
 
 func create_mustard_lakes():
-	var lake_inst = MeshInstance3D.new(); var lake_mesh = PlaneMesh.new(); lake_mesh.size = Vector2(terrain_size, terrain_size); lake_inst.mesh = lake_mesh; lake_inst.position.y = lake_level
+	var lake_inst = MeshInstance3D.new(); lake_inst.name = "MustardLake"
+	var lake_mesh = PlaneMesh.new(); lake_mesh.size = Vector2(terrain_size, terrain_size); lake_inst.mesh = lake_mesh; lake_inst.position.y = lake_level
 	var mat = StandardMaterial3D.new(); mat.albedo_color = Color(1.0, 0.9, 0.0); mat.roughness = 0.05; mat.emission_enabled = true; mat.emission = Color(0.4, 0.3, 0); lake_inst.material_override = mat; add_child(lake_inst)
 
 func scatter_pretzel_trees(count):

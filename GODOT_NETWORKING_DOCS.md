@@ -38,4 +38,19 @@ The world is created using code! It uses a fixed "seed" (like in Minecraft) so t
 - **I'm moving but others don't see me!**: Make sure the `MultiplayerSynchronizer` in `Player.tscn` has the `position` property added to its list.
 - **The Host can move but the Client can't!**: Check `_physics_process` in `Player.gd`. It should check `is_multiplayer_authority()` before moving.
 
+## 🐛 Critical Fixes Log
+
+### 1. Client Spawning Below Host / Stuck in Ground
+We encountered an issue where clients would spawn underground or significantly below the host. This was caused by two things:
+1.  **Non-Deterministic Terrain**: The random seed was different for every player, so the "ground" was in a different place for the client than the server. We fixed this by setting a fixed seed `seed(12345)`.
+2.  **Physics Conflict**: The client's physics engine was applying gravity to *other* players while the network was trying to set their position. We fixed this by disabling local gravity/input for non-authority players in `Player.gd`.
+
+### 2. Players Not Seeing Each Other / Desync on Join
+After implementing the spawn selection menu, players stopped seeing each other. This was caused by a race condition where the client instantiated the player node *before* receiving the correct position from the server, causing it to potentially fall through the world or desync.
+
+**The Fix:**
+-   **`MultiplayerSpawner.spawn_function`**: We switched to using Godot's dedicated `spawn_function`. This allows us to pass the initialization data (ID, location index) to the spawner, which then runs a custom `_spawn_player` function on **both** the Server and Client.
+-   **Atomic Spawning**: Inside `_spawn_player`, we calculate the exact spawn position (using the deterministic noise) and set `player.position` **before** the node is added to the scene tree. This ensures the player exists at the correct location on frame 1, preventing any physics glitches.
+-   **Sync Seed & Regenerate**: We added a `sync_world_settings` RPC that forces the client to use the exact same random seed and noise parameters as the server, and then **regenerates the terrain** locally. This guarantees the ground is identical for everyone.
+
 Enjoy making your game! 🚀

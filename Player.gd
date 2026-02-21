@@ -117,7 +117,12 @@ func _unhandled_input(event):
 
 func _physics_process(delta):
 	if not is_multiplayer_authority():
-		return # Position is synced by MultiplayerSynchronizer
+		# For non-local players, position is synced by MultiplayerSynchronizer.
+		# We still call move_and_slide() to ensure physics/collision state is updated,
+		# but we don't apply gravity or input forces locally.
+		move_and_slide()
+		return
+
 	if is_dead: return
 	if not is_on_floor(): velocity.y -= gravity * delta
 	if Input.is_action_just_pressed("ui_accept") and is_on_floor(): velocity.y = jump_velocity
