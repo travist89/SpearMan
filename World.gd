@@ -31,7 +31,7 @@ func _ready():
 	spawner.name = "MultiplayerSpawner" # Ensure consistent name for replication
 	spawner.spawn_path = get_path()
 	# Register a custom spawn function to handle initialization (position, id) deterministically on both sides
-	spawner.spawn_function = _spawn_player
+	spawner.spawn_function = _spawn_node
 	
 	spawner.add_spawnable_scene(player_scene.resource_path)
 	spawner.add_spawnable_scene(spear_scene.resource_path)
@@ -232,7 +232,15 @@ func add_player(id = 1, location_index = 2):
 	
 	if has_node("Player"): $Player.queue_free()
 
-func _spawn_player(data):
+func _spawn_node(data):
+	# Dispatch to correct spawn logic based on data type
+	if data.has("id"):
+		return _spawn_player_impl(data)
+	elif data.has("is_big"):
+		return _spawn_enemy(data)
+	return null
+
+func _spawn_player_impl(data):
 	var id = data["id"]
 	var location_index = data["location_index"]
 	
@@ -248,27 +256,10 @@ func _spawn_player(data):
 		spawn_pos = Vector3(0, 0, 0)
 	
 	# Deterministic randomness for stacking based on ID
-	# We use the ID to seed a local RNG or just add a fixed offset to ensure
-	# clients and server calculate the exact same position if they need to.
-	# However, since position is synced, the most important thing is that
-	# the server sets it correctly.
-	# BUT, since this function runs on Client too, we want it to be close.
-	# Ideally, we pass the exact position in 'data' from the server.
-	# But calculating it here is fine if 'randf' is synced or if we don't use randf.
-	
-	# Actually, best practice: Server calculates position and passes it in data.
-	# But 'spawner.spawn' takes a single argument.
-	# If we calculate random position here, we must ensure RNG is synced.
-	# We synced seed in _ready. But RNG state might diverge.
-	# So, we should avoid randf() here OR pass the random offset in data.
-	
-	# Let's simplify: We'll calculate the 'ideal' position here.
-	# The slight randomness can be skipped or deterministic based on ID.
 	spawn_pos.x += (id % 5) * 0.5 - 1.0 # Deterministic offset
 	spawn_pos.z += (id % 3) * 0.5 - 1.0
 	
 	# Terrain height calculation
-	# Since we synced the seed and regenerated world, noise should be identical.
 	var y = noise.get_noise_2d(spawn_pos.x, spawn_pos.z) * terrain_height
 	if abs(spawn_pos.x) < 15 and abs(spawn_pos.z) < 15: 
 		y = lerp(y, 3.0, 0.95)
@@ -355,8 +346,22 @@ func scatter_enemies(small_count, big_count):
 		create_enemy_at(Vector3(x, y + 2.0, z), true)
 
 func create_enemy_at(pos, is_big):
-	var enemy = enemy_scene.instantiate(); if is_big: enemy.set_script(load("res://BigEnemy.gd")); enemy.name = "BigEnemy"
-	add_child(enemy); enemy.position = pos
+	# Use spawner with custom data to spawn enemies
+	# This ensures 'is_big' property is set on both server and client at spawn time
+	spawner.spawn({"pos": pos, "is_big": is_big})
+
+func _spawn_enemy(data):
+	var pos = data["pos"]
+	var is_big = data["is_big"]
+	
+	var enemy = enemy_scene.instantiate()
+	enemy.position = pos
+	enemy.is_big = is_big
+	
+	if is_big:
+		enemy.name = "BigEnemy" # Godot handles duplicate names (BigEnemy2, etc.)
+	
+	return enemy
 
 func scatter_collectibles(count):
 	for i in range(count):

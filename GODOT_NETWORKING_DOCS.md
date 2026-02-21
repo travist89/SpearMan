@@ -53,4 +53,17 @@ After implementing the spawn selection menu, players stopped seeing each other. 
 -   **Atomic Spawning**: Inside `_spawn_player`, we calculate the exact spawn position (using the deterministic noise) and set `player.position` **before** the node is added to the scene tree. This ensures the player exists at the correct location on frame 1, preventing any physics glitches.
 -   **Sync Seed & Regenerate**: We added a `sync_world_settings` RPC that forces the client to use the exact same random seed and noise parameters as the server, and then **regenerates the terrain** locally. This guarantees the ground is identical for everyone.
 
+### 3. Enemy Sync / Invisible "Big" Enemies
+We found that "Big Enemies" were not appearing correctly on clients (appearing as normal small enemies). This was because the server was swapping the script (`Enemy.gd` -> `BigEnemy.gd`) at runtime, which does not replicate to clients.
+
+**The Fix:**
+-   **Unified Script**: We merged `BigEnemy.gd` into `Enemy.gd` and added an `@export var is_big` flag to toggle behavior.
+-   **Custom Spawn Logic**: We extended the `MultiplayerSpawner.spawn_function` to handle enemies too. It passes `{"is_big": true}` to the spawn function, ensuring that when the enemy is instantiated on the client, it immediately knows it should be Big and applies the correct scale and stats before adding it to the tree.
+
+## v1.0 Release Notes 🏆
+The project is now considered stable for multiplayer gameplay!
+-   **Deterministic World**: Everyone sees the same terrain.
+-   **Robust Spawning**: Players spawn safely above ground.
+-   **Synced Enemies**: All enemy types appear correctly for all players.
+
 Enjoy making your game! 🚀

@@ -5,6 +5,7 @@ extends CharacterBody3D
 @export var damage = 20
 @export var max_health = 30.0 # Increased from default
 @export var health = 30.0
+@export var is_big = false
 
 var gravity = ProjectSettings.get_setting("physics/3d/default_gravity")
 
@@ -14,9 +15,38 @@ var wander_target = Vector3.ZERO
 var wander_timer = 0.0
 
 func _ready():
+	if is_big:
+		# Apply Big Enemy Stats
+		max_health = 100.0
+		health = 100.0
+		speed = 2.5
+		damage = 40
+		scale = Vector3(2, 2, 2)
+		create_legs()
+		
 	if not multiplayer.is_server():
 		set_physics_process(false)
 		return
+
+func create_legs():
+	for i in range(4):
+		var leg = MeshInstance3D.new()
+		var leg_mesh = CylinderMesh.new()
+		leg_mesh.top_radius = 0.1
+		leg_mesh.bottom_radius = 0.1
+		leg_mesh.height = 1.5
+		leg.mesh = leg_mesh
+		
+		var mat = StandardMaterial3D.new()
+		mat.albedo_color = Color(0.2, 0.2, 0.2)
+		leg.material_override = mat
+		
+		add_child(leg)
+		
+		# Position legs at corners
+		var angle = (PI/2) * i + (PI/4)
+		leg.position = Vector3(cos(angle) * 0.4, -0.5, sin(angle) * 0.4)
+		leg.rotation.z = deg_to_rad(15) if cos(angle) > 0 else deg_to_rad(-15)
 
 func take_damage(amount):
 	if not multiplayer.is_server(): return
