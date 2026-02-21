@@ -84,4 +84,9 @@ Map and Movement Overhaul!
 -   **Enhanced Jump**: Players can now jump significantly higher, allowing for more vertical mobility.
 -   **Network Stability**: Verified all game objects are synchronized for all players.
 
+## v1.4 Release Notes 🛡️
+Combat and AI Fixes!
+-   **Mammoth Damage Fix**: Reworked Mammoth AI to use physical collision-based damage detection. This ensures that Client players are correctly damaged when a Mammoth reaches them, matching the working logic of other enemies.
+-   **Optimized Netcode**: Improved the reliability of damage events between peers.
+
 Enjoy making your game! 🚀

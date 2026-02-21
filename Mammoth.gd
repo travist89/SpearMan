@@ -63,11 +63,6 @@ func _physics_process(delta):
 		var target_pos = Vector3(player.global_position.x, global_position.y, player.global_position.z)
 		if global_position.distance_squared_to(target_pos) > 0.1:
 			look_at(target_pos, Vector3.UP)
-			
-		# Deal damage if close
-		if global_position.distance_to(player.global_position) < attack_radius:
-			if player.has_method("take_damage"):
-				player.take_damage(damage * delta)
 		
 	elif state == "wander":
 		wander_timer -= delta
@@ -89,6 +84,13 @@ func _physics_process(delta):
 			look_at(global_position + velocity, Vector3.UP)
 
 	move_and_slide()
+	
+	# Handle damage via direct collision (same logic as normal enemies)
+	for i in range(get_slide_collision_count()):
+		var collision = get_slide_collision(i)
+		var body = collision.get_collider()
+		if body.has_method("take_damage") and body.name.is_valid_int():
+			body.take_damage(damage * delta)
 
 @rpc("any_peer", "call_local", "reliable")
 func die():

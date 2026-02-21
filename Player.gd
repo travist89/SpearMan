@@ -67,6 +67,7 @@ func update_weapon_ui():
 	if weapon_label:
 		weapon_label.text = "Weapon: " + weapons[weapon_index] + " (Press 1 or 2 to switch)"
 
+@rpc("any_peer", "call_local", "reliable")
 func take_damage(amount):
 	if is_dead: return
 	health -= amount
