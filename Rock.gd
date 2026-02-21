@@ -8,6 +8,10 @@ func _ready():
 	max_contacts_reported = 1
 	connect("body_entered", _on_body_entered)
 	
+	# Check for initial velocity passed from spawner
+	if has_meta("initial_velocity"):
+		linear_velocity = get_meta("initial_velocity")
+	
 	# Rocks automatically despawn after 10 seconds
 	await get_tree().create_timer(10.0).timeout
 	if is_instance_valid(self):

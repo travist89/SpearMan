@@ -66,4 +66,10 @@ The project is now considered stable for multiplayer gameplay!
 -   **Robust Spawning**: Players spawn safely above ground.
 -   **Synced Enemies**: All enemy types appear correctly for all players.
 
+## v1.1 Release Notes 🦣
+New content and stability fixes!
+-   **New Enemy: Mammoth**: Added a massive new megafauna that wanders peacefully but flees when attacked.
+-   **Projectile Fixes**: Restored the spear and rock throwing mechanics to a working state using optimized RPC logic.
+-   **Code Cleanup**: Removed obsolete scripts and unified enemy spawning logic.
+
 Enjoy making your game! 🚀

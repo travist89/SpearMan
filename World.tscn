@@ -2,6 +2,13 @@
 
 [ext_resource type="PackedScene" uid="uid://b5n3m2l1k0ka" path="res://Player.tscn" id="1_player"]
 [ext_resource type="Script" uid="uid://clg6lvq4nrwft" path="res://World.gd" id="2_worldscript"]
+[ext_resource type="PackedScene" uid="uid://c8k2j1x4y5z7" path="res://Spear.tscn" id="3_spear"]
+[ext_resource type="PackedScene" uid="uid://b8k2j1x4y5z8" path="res://Rock.tscn" id="4_rock"]
+[ext_resource type="PackedScene" uid="uid://eaf8e7a6b5c4" path="res://Enemy.tscn" id="5_enemy"]
+[ext_resource type="PackedScene" uid="uid://d3x4y5z6a7b8" path="res://Mammoth.tscn" id="6_mammoth"]
+[ext_resource type="PackedScene" uid="uid://f2g5h8j3k9l0" path="res://Target.tscn" id="7_target"]
+[ext_resource type="PackedScene" uid="uid://g5h8j3k9l0m1" path="res://CollectibleHealth.tscn" id="8_health"]
+[ext_resource type="PackedScene" uid="uid://h8j3k9l0m1n2" path="res://CollectibleSpeed.tscn" id="9_speed"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
 
@@ -16,6 +23,13 @@ tonemap_mode = 2
 [node name="World" type="Node3D" unique_id=1760593722]
 script = ExtResource("2_worldscript")
 player_scene = ExtResource("1_player")
+spear_scene = ExtResource("3_spear")
+rock_scene = ExtResource("4_rock")
+enemy_scene = ExtResource("5_enemy")
+mammoth_scene = ExtResource("6_mammoth")
+target_scene = ExtResource("7_target")
+collectible_health_scene = ExtResource("8_health")
+collectible_speed_scene = ExtResource("9_speed")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=413812353]
 environment = SubResource("Environment_1")

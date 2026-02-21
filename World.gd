@@ -6,6 +6,7 @@ var peer = ENetMultiplayerPeer.new()
 @export var spear_scene: PackedScene = preload("res://Spear.tscn")
 @export var rock_scene: PackedScene = preload("res://Rock.tscn")
 @export var enemy_scene: PackedScene = preload("res://Enemy.tscn")
+@export var mammoth_scene: PackedScene = preload("res://Mammoth.tscn")
 @export var target_scene: PackedScene = preload("res://Target.tscn")
 @export var collectible_health_scene: PackedScene = preload("res://CollectibleHealth.tscn")
 @export var collectible_speed_scene: PackedScene = preload("res://CollectibleSpeed.tscn")
@@ -37,6 +38,7 @@ func _ready():
 	spawner.add_spawnable_scene(spear_scene.resource_path)
 	spawner.add_spawnable_scene(rock_scene.resource_path)
 	spawner.add_spawnable_scene(enemy_scene.resource_path)
+	spawner.add_spawnable_scene(mammoth_scene.resource_path)
 	spawner.add_spawnable_scene(target_scene.resource_path)
 	spawner.add_spawnable_scene(collectible_health_scene.resource_path)
 	spawner.add_spawnable_scene(collectible_speed_scene.resource_path)
@@ -71,6 +73,7 @@ func _ready():
 	if multiplayer.is_server():
 		scatter_targets(30)
 		scatter_enemies(12, 5)
+		scatter_mammoths(3) # Start with a few mammoths
 		scatter_collectibles(20)
 
 func _process(delta):
@@ -238,6 +241,8 @@ func _spawn_node(data):
 		return _spawn_player_impl(data)
 	elif data.has("is_big"):
 		return _spawn_enemy(data)
+	elif data.has("type") and data["type"] == "mammoth":
+		return _spawn_mammoth(data)
 	return null
 
 func _spawn_player_impl(data):
@@ -259,16 +264,48 @@ func _spawn_player_impl(data):
 	spawn_pos.x += (id % 5) * 0.5 - 1.0 # Deterministic offset
 	spawn_pos.z += (id % 3) * 0.5 - 1.0
 	
-	# Terrain height calculation
-	var y = noise.get_noise_2d(spawn_pos.x, spawn_pos.z) * terrain_height
-	if abs(spawn_pos.x) < 15 and abs(spawn_pos.z) < 15: 
-		y = lerp(y, 3.0, 0.95)
+	# Determine spawn height using Raycast for accuracy with collision geometry
+	# Start high above the probable terrain
+	var ray_start = Vector3(spawn_pos.x, 100.0, spawn_pos.z)
+	var ray_end = Vector3(spawn_pos.x, -50.0, spawn_pos.z)
 	
-	# Set safe height
-	spawn_pos.y = max(y + 10.0, 50.0)
+	var space_state = get_world_3d().direct_space_state
+	var query = PhysicsRayQueryParameters3D.create(ray_start, ray_end)
+	# query.collision_mask = 1 # Default mask, ensure terrain is on this layer
+	
+	var result = space_state.intersect_ray(query)
+	
+	if result:
+		# Found ground! Spawn slightly above it
+		spawn_pos.y = result.position.y + 2.0
+	else:
+		# No ground found (maybe hole or error), fallback to noise calculation
+		var y = noise.get_noise_2d(spawn_pos.x, spawn_pos.z) * terrain_height
+		if abs(spawn_pos.x) < 15 and abs(spawn_pos.z) < 15: 
+			y = lerp(y, 3.0, 0.95)
+		spawn_pos.y = max(y + 10.0, 50.0)
 	
 	player.position = spawn_pos
 	return player
+
+func _spawn_enemy(data):
+	var pos = data["pos"]
+	var is_big = data["is_big"]
+	
+	var enemy = enemy_scene.instantiate()
+	enemy.position = pos
+	enemy.is_big = is_big
+	
+	if is_big:
+		enemy.name = "BigEnemy" # Godot handles duplicate names (BigEnemy2, etc.)
+	
+	return enemy
+
+func _spawn_mammoth(data):
+	var pos = data["pos"]
+	var mammoth = mammoth_scene.instantiate()
+	mammoth.position = pos
+	return mammoth
 
 # setup_environment function removed as its logic was moved to _ready
 
@@ -350,18 +387,14 @@ func create_enemy_at(pos, is_big):
 	# This ensures 'is_big' property is set on both server and client at spawn time
 	spawner.spawn({"pos": pos, "is_big": is_big})
 
-func _spawn_enemy(data):
-	var pos = data["pos"]
-	var is_big = data["is_big"]
-	
-	var enemy = enemy_scene.instantiate()
-	enemy.position = pos
-	enemy.is_big = is_big
-	
-	if is_big:
-		enemy.name = "BigEnemy" # Godot handles duplicate names (BigEnemy2, etc.)
-	
-	return enemy
+func scatter_mammoths(count):
+	for i in range(count):
+		var x = randf_range(-terrain_size/2, terrain_size/2); var z = randf_range(-terrain_size/2, terrain_size/2); var y = noise.get_noise_2d(x, z) * terrain_height
+		if y < lake_level + 1.0: continue
+		create_mammoth_at(Vector3(x, y + 2.0, z)) # Spawn higher up
+
+func create_mammoth_at(pos):
+	spawner.spawn({"pos": pos, "type": "mammoth"})
 
 func scatter_collectibles(count):
 	for i in range(count):

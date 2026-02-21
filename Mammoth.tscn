@@ -1,0 +1,67 @@
+[gd_scene format=3 uid="uid://d3x4y506a7b8"]
+
+[ext_resource type="Script" path="res://Mammoth.gd" id="1_mammoth"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_m"]
+radius = 1.5
+height = 4.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_fur"]
+albedo_color = Color(0.3, 0.2, 0.1, 1)
+roughness = 1.0
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_body"]
+material = SubResource("StandardMaterial3D_fur")
+radius = 1.5
+height = 4.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_head"]
+material = SubResource("StandardMaterial3D_fur")
+size = Vector3(1.5, 1.5, 2.0)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ivory"]
+albedo_color = Color(0.9, 0.9, 0.8, 1)
+roughness = 0.4
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_tusk"]
+material = SubResource("StandardMaterial3D_ivory")
+top_radius = 0.1
+bottom_radius = 0.2
+height = 2.0
+
+[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_m"]
+properties/0/path = NodePath(".:position")
+properties/0/spawn = true
+properties/0/replication_mode = 1
+properties/1/path = NodePath(".:rotation")
+properties/1/spawn = true
+properties/1/replication_mode = 1
+properties/2/path = NodePath(".:health")
+properties/2/spawn = true
+properties/2/replication_mode = 2
+
+[node name="Mammoth" type="CharacterBody3D"]
+script = ExtResource("1_mammoth")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 0, 2, 0)
+shape = SubResource("CapsuleShape3D_m")
+
+[node name="Body" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 0, 2, 0)
+mesh = SubResource("CapsuleMesh_body")
+
+[node name="Head" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.5, 1.5)
+mesh = SubResource("BoxMesh_head")
+
+[node name="TuskLeft" type="MeshInstance3D" parent="Head"]
+transform = Transform3D(1, 0, 0, 0, 0.5, 0.866025, 0, -0.866025, 0.5, -0.5, -0.5, 1.2)
+mesh = SubResource("CylinderMesh_tusk")
+
+[node name="TuskRight" type="MeshInstance3D" parent="Head"]
+transform = Transform3D(1, 0, 0, 0, 0.5, 0.866025, 0, -0.866025, 0.5, 0.5, -0.5, 1.2)
+mesh = SubResource("CylinderMesh_tusk")
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
+replication_config = SubResource("SceneReplicationConfig_m")

@@ -8,6 +8,10 @@ func _ready():
 	contact_monitor = true
 	max_contacts_reported = 1
 	connect("body_entered", _on_body_entered)
+	
+	# Check for initial velocity passed from spawner
+	if has_meta("initial_velocity"):
+		linear_velocity = get_meta("initial_velocity")
 
 func _on_body_entered(body):
 	# Only server handles collisions and game logic
