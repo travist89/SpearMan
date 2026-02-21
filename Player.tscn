@@ -11,6 +11,19 @@ height = 2.0
 radius = 0.5
 height = 2.0
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_cloth"]
+albedo_color = Color(0.45, 0.25, 0.1, 1)
+roughness = 0.9
+
+[sub_resource type="BoxMesh" id="BoxMesh_flap"]
+material = SubResource("StandardMaterial3D_cloth")
+size = Vector3(0.6, 0.8, 0.05)
+
+[sub_resource type="TorusMesh" id="TorusMesh_belt"]
+material = SubResource("StandardMaterial3D_cloth")
+inner_radius = 0.48
+outer_radius = 0.55
+
 [sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_s"]
 properties/0/path = NodePath(".:position")
 properties/0/spawn = true
@@ -37,6 +50,20 @@ shape = SubResource("CapsuleShape3D_p")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
 mesh = SubResource("CapsuleMesh_p")
+
+[node name="LoinCloth" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.4, 0)
+
+[node name="FrontFlap" type="MeshInstance3D" parent="LoinCloth"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.3, -0.5)
+mesh = SubResource("BoxMesh_flap")
+
+[node name="BackFlap" type="MeshInstance3D" parent="LoinCloth"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.3, 0.5)
+mesh = SubResource("BoxMesh_flap")
+
+[node name="Belt" type="MeshInstance3D" parent="LoinCloth"]
+mesh = SubResource("TorusMesh_belt")
 
 [node name="CameraPivot" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)

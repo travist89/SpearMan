@@ -12,7 +12,8 @@ Hi there! If you're just starting with Godot and want to know how multiplayer wo
 ## 🛠️ How it Works (The Simple Version)
 
 ### 1. The World (`World.gd`)
-The world is created using code! It uses a "seed" (like in Minecraft) so that every player sees the exact same hills and valleys. 
+The world is created using code! It uses a fixed "seed" (like in Minecraft) so that every player generates the exact same hills, valleys, trees, and rocks locally.
+- **Deterministic Generation**: We use `seed(12345)` to ensure that `randf()` produces the same random numbers on every computer. This keeps the world in sync without sending huge amounts of data.
 - **MultiplayerSpawner**: This is a magical node that tells Godot: *"Whenever the server creates a player or a spear, make sure every client creates one too!"*
 
 ### 2. The Player (`Player.gd`)
@@ -21,12 +22,12 @@ The world is created using code! It uses a "seed" (like in Minecraft) so that ev
 - **Stats (Health & Stamina)**: We've set these up to sync automatically so everyone can see your health bar update.
 
 ### 3. Enemies (`Enemy.gd`)
-- **Server Only**: To keep things fair, the AI logic (finding players and chasing them) only runs on the **Host** (the Server). The clients just see the enemy moving because its position is synced.
+- **Server Only**: To keep things fair, the AI logic (finding players and chasing them) only runs on the **Host** (the Server). The clients just see the enemy moving because its position is synced via the `MultiplayerSynchronizer`.
 
-### 4. Throwing Spears (`Spear.gd`)
-- When you click to throw, your game sends an **RPC** (Remote Procedure Call) to the server. 
+### 4. Throwing Spears (Input in `Player.gd`)
+- When you click to throw, your `Player.gd` script sends an **RPC** (Remote Procedure Call) named `throw_projectile` to the server.
 - It's like calling the server on the phone and saying: *"Hey, I'm throwing a spear now!"*
-- The server then spawns the spear for everyone to see.
+- The server then spawns the spear scene (`Spear.tscn`) for everyone to see using the `MultiplayerSpawner`.
 
 ## 💡 Beginner Tips
 - **Nodes**: Everything in Godot is a Node. If you want to add a new property to sync (like a 'score'), you add it to the `MultiplayerSynchronizer`.

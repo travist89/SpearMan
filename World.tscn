@@ -13,16 +13,6 @@ background_mode = 2
 sky = SubResource("Sky_1")
 tonemap_mode = 2
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_floor"]
-albedo_color = Color(0.2, 0.4, 0.2, 1)
-
-[sub_resource type="BoxMesh" id="BoxMesh_floor"]
-material = SubResource("StandardMaterial3D_floor")
-size = Vector3(20, 0.5, 20)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
-size = Vector3(20, 0.5, 20)
-
 [node name="World" type="Node3D" unique_id=1760593722]
 script = ExtResource("2_worldscript")
 player_scene = ExtResource("1_player")
@@ -33,13 +23,3 @@ environment = SubResource("Environment_1")
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1176447541]
 transform = Transform3D(-0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, 0.75, -0.433013, 0, 0, 0)
 shadow_enabled = true
-
-[node name="Floor" type="StaticBody3D" parent="." unique_id=1467681888]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.25, 0)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor" unique_id=2088776688]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.48320544, -0.12855756, -0.07541609)
-mesh = SubResource("BoxMesh_floor")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor" unique_id=1522858284]
-shape = SubResource("BoxShape3D_floor")

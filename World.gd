@@ -39,12 +39,27 @@ func _ready():
 	create_multiplayer_ui()
 	setup_lighting_and_sky()
 	
-	randomize()
+	# Use a fixed seed for deterministic generation across all clients
+	seed(12345)
 	noise.seed = 12345 
 	noise.frequency = 0.012
 	noise.fractal_octaves = 5
 	
-	setup_environment()
+	# Only the server generates the environment objects (enemies, collectibles, etc.)
+	# The MultiplayerSpawner will replicate these to clients.
+	# Terrain and static geometry are generated on all clients deterministically.
+	create_terrain() 
+	create_mustard_lakes()
+	
+	# Static environment objects (no networking needed as generation is deterministic)
+	scatter_pretzel_trees(60)
+	scatter_crouton_rocks(40)
+	
+	# Networked objects (server authority only)
+	if multiplayer.is_server():
+		scatter_targets(30)
+		scatter_enemies(12, 5)
+		scatter_collectibles(20)
 
 func _process(delta):
 	update_day_night_cycle(delta)
@@ -84,53 +99,99 @@ func update_day_night_cycle(delta):
 	elif sun_height > -0.1: sky_mat.sky_top_color = Color(0.8, 0.3, 0.15)
 	else: sky_mat.sky_top_color = Color(0.01, 0.01, 0.06)
 
+var connection_ui: Control
+var spawn_ui: Control
+
 func create_multiplayer_ui():
 	var canvas = CanvasLayer.new(); add_child(canvas)
-	var vbox = VBoxContainer.new(); canvas.add_child(vbox); vbox.position = Vector2(20, 100)
-	var host_btn = Button.new(); host_btn.text = "Host"; host_btn.pressed.connect(start_host); vbox.add_child(host_btn)
-	var join_btn = Button.new(); join_btn.text = "Join"; join_btn.pressed.connect(start_join); vbox.add_child(join_btn)
+	
+	# Connection Menu
+	connection_ui = VBoxContainer.new()
+	canvas.add_child(connection_ui)
+	connection_ui.position = Vector2(20, 100)
+	var host_btn = Button.new(); host_btn.text = "Host"; host_btn.pressed.connect(start_host); connection_ui.add_child(host_btn)
+	var join_btn = Button.new(); join_btn.text = "Join"; join_btn.pressed.connect(start_join); connection_ui.add_child(join_btn)
+	
+	# Spawn Selection Menu (Hidden initially)
+	spawn_ui = VBoxContainer.new()
+	canvas.add_child(spawn_ui)
+	spawn_ui.position = Vector2(20, 100)
+	spawn_ui.visible = false
+	
+	var label = Label.new(); label.text = "Select Spawn Location:"; spawn_ui.add_child(label)
+	var cave_btn = Button.new(); cave_btn.text = "Cave (North West)"; cave_btn.pressed.connect(func(): request_spawn_at.rpc_id(1, 0)); spawn_ui.add_child(cave_btn)
+	var jungle_btn = Button.new(); jungle_btn.text = "Jungle (South East)"; jungle_btn.pressed.connect(func(): request_spawn_at.rpc_id(1, 1)); spawn_ui.add_child(jungle_btn)
+	var altar_btn = Button.new(); altar_btn.text = "Altar (Center)"; altar_btn.pressed.connect(func(): request_spawn_at.rpc_id(1, 2)); spawn_ui.add_child(altar_btn)
 
 func start_host():
 	if peer.get_connection_status() != MultiplayerPeer.CONNECTION_DISCONNECTED: return
 	peer.create_server(13579); multiplayer.multiplayer_peer = peer
-	multiplayer.peer_connected.connect(add_player); add_player(1) 
+	
+	# Don't auto-spawn players on connect anymore, wait for them to request spawn
+	# multiplayer.peer_connected.connect(add_player) 
+	
+	# Hide connection buttons, show spawn selection
+	connection_ui.visible = false
+	spawn_ui.visible = true
 
 func start_join():
 	if peer.get_connection_status() != MultiplayerPeer.CONNECTION_DISCONNECTED: return
 	peer.create_client("127.0.0.1", 13579); multiplayer.multiplayer_peer = peer
+	
+	# Hide connection buttons, show spawn selection
+	connection_ui.visible = false
+	spawn_ui.visible = true
+	
 	if has_node("Player"): $Player.queue_free()
 
-func add_player(id = 1):
+@rpc("any_peer", "call_local")
+func request_spawn_at(location_index):
+	var sender_id = multiplayer.get_remote_sender_id()
+	add_player(sender_id, location_index)
+	# Hide spawn UI on the client who requested it (if it was a local call like Host)
+	if sender_id == 1:
+		spawn_ui.visible = false
+	else:
+		hide_spawn_ui_on_client.rpc_id(sender_id)
+
+@rpc("authority", "call_remote")
+func hide_spawn_ui_on_client():
+	spawn_ui.visible = false
+
+func add_player(id = 1, location_index = 2):
 	if not multiplayer.is_server(): return
 	var player = player_scene.instantiate()
 	player.name = str(id)
 	
-	# RADICAL POSITION STAGGERING
 	var spawn_pos = Vector3.ZERO
-	if int(id) == 1:
-		spawn_pos = Vector3(0, 50, 0) # Host
-	else:
-		# Clients spawn at different X/Z locations and MUCH higher
-		var offset_angle = randf() * TAU
-		var offset_radius = 5.0 + (multiplayer.get_peers().size() * 2.0)
-		spawn_pos = Vector3(cos(offset_angle) * offset_radius, 250.0 + (multiplayer.get_peers().size() * 50.0), sin(offset_angle) * offset_radius)
+	if location_index == 0: # Cave
+		spawn_pos = Vector3(-50, 0, -50)
+	elif location_index == 1: # Jungle
+		spawn_pos = Vector3(50, 0, 50)
+	else: # Altar
+		spawn_pos = Vector3(0, 0, 0)
+	
+	# Add some randomness to prevent exact stacking if multiple players choose same spot
+	spawn_pos.x += randf_range(-2, 2)
+	spawn_pos.z += randf_range(-2, 2)
+	
+	# Calculate terrain height at spawn position
+	# Note: noise.get_noise_2d takes world coordinates directly as used in create_terrain
+	var y = noise.get_noise_2d(spawn_pos.x, spawn_pos.z) * terrain_height
+	
+	# Apply the same flattening logic for the center area as in create_terrain
+	if abs(spawn_pos.x) < 15 and abs(spawn_pos.z) < 15: 
+		y = lerp(y, 3.0, 0.95)
+		
+	# Set spawn height well above the terrain to avoid getting stuck
+	spawn_pos.y = y + 10.0
 	
 	player.position = spawn_pos
 	add_child(player)
 	
-	print("SERVER: Spawning Player %s at %s" % [id, spawn_pos])
-	
 	if has_node("Player"): $Player.queue_free()
 
-func setup_environment():
-	create_terrain() 
-	create_mustard_lakes()
-	if multiplayer.is_server():
-		scatter_targets(30)
-		scatter_enemies(12, 5)
-		scatter_collectibles(20)
-		scatter_pretzel_trees(60)
-		scatter_crouton_rocks(40)
+# setup_environment function removed as its logic was moved to _ready
 
 func create_terrain():
 	var st = SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
