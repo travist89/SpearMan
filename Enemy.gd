@@ -1,3 +1,5 @@
+# Generic AI Enemy for "Age of Manwe"
+# Handles simple wandering and player-chasing behaviors.
 extends CharacterBody3D
 
 @export var speed = 4.0
@@ -24,6 +26,8 @@ func _ready():
 		scale = Vector3(2, 2, 2)
 		create_legs()
 		
+	# AI logic and movement calculations should only run on the server.
+	# Clients will receive position updates via MultiplayerSynchronizer.
 	if not multiplayer.is_server():
 		set_physics_process(false)
 		return
@@ -66,9 +70,11 @@ func find_nearest_player():
 	return nearest
 
 func _physics_process(delta):
+	# Gravity and AI state machine
 	if not is_on_floor():
 		velocity.y -= gravity * delta
 
+	# Update target information
 	player = find_nearest_player()
 
 	if player:

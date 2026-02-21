@@ -1,3 +1,5 @@
+# Aggressive Megafauna AI for "Age of Manwe"
+# Mammoths are powerful creatures that will chase and damage players.
 extends CharacterBody3D
 
 @export var speed = 3.0
@@ -16,6 +18,7 @@ var wander_target = Vector3.ZERO
 var wander_timer = 0.0
 
 func _ready():
+	# Only the server should handle Mammoth AI and movement
 	if not multiplayer.is_server():
 		set_physics_process(false)
 		return
@@ -85,10 +88,12 @@ func _physics_process(delta):
 
 	move_and_slide()
 	
-	# Handle damage via direct collision (same logic as normal enemies)
+	# Handle damage via direct physical collision. 
+	# This ensures reliable damage even with the Mammoth's large scale.
 	for i in range(get_slide_collision_count()):
 		var collision = get_slide_collision(i)
 		var body = collision.get_collider()
+		# Only damage valid player nodes (which have integer names)
 		if body.has_method("take_damage") and body.name.is_valid_int():
 			body.take_damage(damage * delta)
 

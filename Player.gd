@@ -1,3 +1,5 @@
+# Main Player Controller for "Age of Manwe"
+# Handles movement, camera, combat, and multiplayer authority.
 extends CharacterBody3D
 
 @export var speed = 5.0
@@ -38,8 +40,9 @@ var gravity = ProjectSettings.get_setting("physics/3d/default_gravity")
 @onready var hand_position = $HandPosition 
 
 func _enter_tree():
+	# Set network authority based on node name (which matches the Peer ID)
 	var id = name.to_int()
-	if id == 0: id = 1 
+	if id == 0: id = 1 # Default to host if name is not an integer (e.g. at startup)
 	set_multiplayer_authority(id)
 
 func _ready():
@@ -117,10 +120,11 @@ func _unhandled_input(event):
 		weapon_index = 1; update_weapon_ui()
 
 func _physics_process(delta):
+	# Optimization: Only process full movement/logic for the local player authority
 	if not is_multiplayer_authority():
-		# For non-local players, position is synced by MultiplayerSynchronizer.
-		# We still call move_and_slide() to ensure physics/collision state is updated,
-		# but we don't apply gravity or input forces locally.
+		# For non-local players, position is synced by the MultiplayerSynchronizer node.
+		# We still call move_and_slide() to ensure collision state remains active in the physics world,
+		# but we avoid applying gravity or inputs locally to prevent jitter/desync.
 		move_and_slide()
 		return
 
@@ -147,8 +151,10 @@ func _physics_process(delta):
 	else: velocity.x = move_toward(velocity.x, 0, current_speed); velocity.z = move_toward(velocity.z, 0, current_speed)
 	move_and_slide()
 
+# Server-side logic for spawning projectiles requested by players
 @rpc("any_peer", "call_local")
 func throw_projectile(type):
+	# Projectile spawning is server-authoritative
 	if not multiplayer.is_server(): return
 	
 	var projectile_scene = spear_scene
@@ -157,8 +163,13 @@ func throw_projectile(type):
 		
 	if projectile_scene:
 		var p = projectile_scene.instantiate()
+		# Add projectile to the World node (parent)
 		get_parent().add_child(p, true)
+		
+		# Initialize position and direction from player's hand and camera forward
 		p.global_transform = hand_position.global_transform
 		var camera_forward = -camera.global_transform.basis.z
 		p.look_at(p.global_position + camera_forward, Vector3.UP)
+		
+		# Launch the projectile using physics impulse
 		p.apply_impulse(-p.global_transform.basis.z * throw_force)

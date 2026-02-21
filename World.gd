@@ -1,6 +1,8 @@
+# World Controller for "Age of Manwe"
+# Handles networking, terrain generation, and continuous enemy spawning.
 extends Node3D
 
-# Networking
+# Networking Setup
 var peer = ENetMultiplayerPeer.new()
 @export var player_scene: PackedScene
 @export var spear_scene: PackedScene = preload("res://Spear.tscn")
@@ -29,10 +31,13 @@ var spawner: MultiplayerSpawner
 var spawn_id_counter = 0
 
 func _ready():
+	# Configure MultiplayerSpawner to handle dynamic entity creation
 	spawner = MultiplayerSpawner.new()
-	spawner.name = "MultiplayerSpawner" # Ensure consistent name for replication
+	spawner.name = "MultiplayerSpawner" # Explicit name is critical for network path matching
 	spawner.spawn_path = get_path()
-	# Register a custom spawn function to handle initialization (position, id) deterministically on both sides
+	
+	# Register a custom spawn function to handle complex initialization (position, id) 
+	# This ensures nodes are spawned and positioned in a single frame on all peers.
 	spawner.spawn_function = _spawn_node
 	
 	spawner.add_spawnable_scene(player_scene.resource_path)
@@ -236,11 +241,14 @@ func add_player(id = 1, location_index = 2):
 	
 	if has_node("Player"): $Player.queue_free()
 
+# Central spawn dispatcher called by MultiplayerSpawner on both Server and Client
 func _spawn_node(data):
-	# Dispatch to correct spawn logic based on data type
+	# Dispatch to the appropriate instantiation logic based on the data keys provided
 	if data.has("id"):
+		# Handles Player spawning with specific Peer IDs
 		return _spawn_player_impl(data)
 	elif data.has("is_big") or (data.has("type") and data["type"] == "mammoth"):
+		# Handles dynamic AI enemies (Mammoths and Normal/Big Enemies)
 		if data.has("type") and data["type"] == "mammoth":
 			return _spawn_mammoth(data)
 		else:
