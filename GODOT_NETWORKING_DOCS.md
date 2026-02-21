@@ -72,4 +72,10 @@ New content and stability fixes!
 -   **Projectile Fixes**: Restored the spear and rock throwing mechanics to a working state using optimized RPC logic.
 -   **Code Cleanup**: Removed obsolete scripts and unified enemy spawning logic.
 
+## v1.2 Release Notes 🔥
+Increased intensity and density!
+-   **Aggressive Mammoths**: Mammoths are no longer peaceful; they will detect and chase players from a distance.
+-   **High Density Spawning**: Increased the enemy population limit to 200 and set the spawn rate to 1 enemy per second on the server.
+-   **Mammoth Dominance**: Increased the spawn probability of Mammoths to 40%.
+
 Enjoy making your game! 🚀

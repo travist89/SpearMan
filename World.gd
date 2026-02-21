@@ -396,6 +396,54 @@ func scatter_mammoths(count):
 func create_mammoth_at(pos):
 	spawner.spawn({"pos": pos, "type": "mammoth"})
 
+var spawn_timer = 0.0
+var spawn_interval = 1.0 # Spawn every 1 second (much faster)
+var max_enemies = 200 # Much higher cap
+
+func _physics_process(delta):
+	# ... (update_day_night_cycle is called in _process, not physics)
+	
+	if multiplayer.is_server():
+		spawn_timer += delta
+		if spawn_timer >= spawn_interval:
+			spawn_timer = 0.0
+			try_spawn_random_enemy()
+
+func try_spawn_random_enemy():
+	# Count current enemies
+	var current_enemies = 0
+	for child in get_children():
+		if child.name.begins_with("Enemy") or child.name.begins_with("BigEnemy") or child.name.begins_with("Mammoth"):
+			current_enemies += 1
+			
+	if current_enemies >= max_enemies:
+		return
+
+	var pos = find_random_spawn_pos()
+	if pos == Vector3.ZERO: return # Failed to find spot
+	
+	var r = randf()
+	if r < 0.4:
+		create_enemy_at(pos, false) # Normal (40%)
+	elif r < 0.6:
+		create_enemy_at(pos, true) # Big (20%)
+	else:
+		create_mammoth_at(pos) # Mammoth (40%)
+
+func find_random_spawn_pos():
+	for i in range(10): # Try 10 times
+		var x = randf_range(-terrain_size/2, terrain_size/2)
+		var z = randf_range(-terrain_size/2, terrain_size/2)
+		
+		# Get terrain height from noise
+		var y = noise.get_noise_2d(x, z) * terrain_height
+		if abs(x) < 15 and abs(z) < 15: y = lerp(y, 3.0, 0.95)
+		
+		if y > lake_level + 1.0:
+			return Vector3(x, y + 2.0, z)
+			
+	return Vector3.ZERO
+
 func scatter_collectibles(count):
 	for i in range(count):
 		var x = randf_range(-terrain_size/2, terrain_size/2); var z = randf_range(-terrain_size/2, terrain_size/2); var y = noise.get_noise_2d(x, z) * terrain_height

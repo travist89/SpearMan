@@ -1,11 +1,12 @@
 extends CharacterBody3D
 
-@export var speed = 2.0
-@export var run_speed = 6.0
-@export var detection_radius = 20.0
-@export var flee_radius = 15.0
-@export var max_health = 200.0
-@export var health = 200.0
+@export var speed = 3.0
+@export var run_speed = 8.0
+@export var detection_radius = 25.0
+@export var attack_radius = 5.0
+@export var damage = 50.0
+@export var max_health = 250.0
+@export var health = 250.0
 
 var gravity = ProjectSettings.get_setting("physics/3d/default_gravity")
 
@@ -47,24 +48,26 @@ func _physics_process(delta):
 	if player:
 		var dist = global_position.distance_to(player.global_position)
 		
-		# If fleeing, keep fleeing until far enough
-		if state == "flee":
-			if dist > flee_radius * 2.0:
-				state = "wander"
-		# If wandering and player gets too close, maybe get annoyed or flee?
-		# For now, mammoths are peaceful unless provoked or very close
-		elif dist < 5.0:
-			state = "flee"
+		if dist < detection_radius:
+			state = "chase"
+		elif state == "chase" and dist > detection_radius * 1.5:
+			state = "wander"
 			
-	if state == "flee" and player:
-		# Run away from player
-		var direction = (global_position - player.global_position).normalized()
+	if state == "chase" and player:
+		# Attack player
+		var direction = (player.global_position - global_position).normalized()
 		direction.y = 0 
 		velocity.x = direction.x * run_speed
 		velocity.z = direction.z * run_speed
 		
-		if velocity.length() > 0.1:
-			look_at(global_position + velocity, Vector3.UP)
+		var target_pos = Vector3(player.global_position.x, global_position.y, player.global_position.z)
+		if global_position.distance_squared_to(target_pos) > 0.1:
+			look_at(target_pos, Vector3.UP)
+			
+		# Deal damage if close
+		if global_position.distance_to(player.global_position) < attack_radius:
+			if player.has_method("take_damage"):
+				player.take_damage(damage * delta)
 		
 	elif state == "wander":
 		wander_timer -= delta
