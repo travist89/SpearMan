@@ -145,6 +145,7 @@ func _physics_process(delta):
 # RPC for the death effect. "call_local" means it runs on server + all clients.
 @rpc("any_peer", "call_local", "reliable")
 func explode():
+	if not is_inside_tree(): return
 	print("Enemy Exploded!")
 	spawn_particles()
 	queue_free() # Remove the enemy from the game

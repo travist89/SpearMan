@@ -117,6 +117,7 @@ func _physics_process(delta):
 # RPC to handle Mammoth death across the network
 @rpc("any_peer", "call_local", "reliable")
 func die():
+	if not is_inside_tree(): return
 	print("Mammoth Died!")
 	# Currently just disappears, but could spawn items or play an animation
 	queue_free()

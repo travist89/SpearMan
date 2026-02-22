@@ -80,13 +80,8 @@ func _ready():
 	scatter_crouton_rocks(40)
 	
 	# --- Server-Only Initialization ---
-	# Only the host/server spawns enemies and items. 
-	# The MultiplayerSpawner then sends them to the clients.
-	if multiplayer.is_server():
-		scatter_targets(30)
-		scatter_enemies(12, 5)
-		scatter_mammoths(3)
-		scatter_collectibles(20)
+	# We moved the initial spawn logic to start_host() because
+	# multiplayer.is_server() is false here when running as a listen server (host).
 
 func _process(delta):
 	# Update the sun and moon position every frame
@@ -175,6 +170,13 @@ func start_host():
 	
 	connection_ui.visible = false
 	spawn_ui.visible = true
+	
+	# Spawn initial enemies and items now that the server is active
+	if multiplayer.is_server():
+		scatter_targets(30)
+		scatter_enemies(12, 5)
+		scatter_mammoths(3)
+		scatter_collectibles(20)
 
 # Client joins a host
 func start_join():
@@ -212,8 +214,12 @@ func add_player(id = 1, location_index = 2):
 func _spawn_node(data):
 	if data.has("id"):
 		return _spawn_player_impl(data)
-	elif data.has("type") and data["type"] == "mammoth":
-		return _spawn_mammoth(data)
+	elif data.has("type"):
+		var type = data["type"]
+		if type == "mammoth": return _spawn_mammoth(data)
+		elif type == "target": return _spawn_target(data)
+		elif type == "collectible_health": return _spawn_collectible(data, collectible_health_scene)
+		elif type == "collectible_speed": return _spawn_collectible(data, collectible_speed_scene)
 	elif data.has("pos"):
 		return _spawn_enemy(data)
 	return null
@@ -256,6 +262,22 @@ func _spawn_mammoth(data):
 	mammoth.name = "Mammoth_" + str(spawn_id)
 	mammoth.position = pos
 	return mammoth
+
+func _spawn_target(data):
+	var pos = data["pos"]
+	var spawn_id = data["spawn_id"]
+	var target = target_scene.instantiate()
+	target.name = "Target_" + str(spawn_id)
+	target.position = pos
+	return target
+
+func _spawn_collectible(data, scene):
+	var pos = data["pos"]
+	var spawn_id = data["spawn_id"]
+	var item = scene.instantiate()
+	item.name = "Collectible_" + str(spawn_id)
+	item.position = pos
+	return item
 
 # --- TERRAIN GENERATION LOGIC ---
 # Uses a SurfaceTool to build a 3D mesh from scratch using Noise values
@@ -346,8 +368,9 @@ func scatter_targets(count):
 		var z = randf_range(-terrain_size/2, terrain_size/2)
 		var y = noise.get_noise_2d(x, z) * terrain_height
 		if y < lake_level + 1.0: continue
-		var target = target_scene.instantiate()
-		add_child(target); target.position = Vector3(x, y + 1.5, z)
+		
+		spawn_id_counter += 1
+		spawner.spawn({"pos": Vector3(x, y + 1.5, z), "type": "target", "spawn_id": spawn_id_counter})
 
 func scatter_enemies(small_count, big_count):
 	for i in range(small_count):
@@ -406,5 +429,6 @@ func scatter_collectibles(count):
 	for i in range(count):
 		var pos = find_random_spawn_pos()
 		if pos != Vector3.ZERO:
-			var item = (collectible_speed_scene if randf() < 0.5 else collectible_health_scene).instantiate()
-			add_child(item); item.position = pos
+			var type = "collectible_speed" if randf() < 0.5 else "collectible_health"
+			spawn_id_counter += 1
+			spawner.spawn({"pos": pos, "type": type, "spawn_id": spawn_id_counter})
