@@ -14,12 +14,14 @@ var peer = ENetMultiplayerPeer.new()
 # that we want to create during the game.
 @export var player_scene: PackedScene
 @export var spear_scene: PackedScene = preload("res://Spear.tscn")
+@export var fire_spear_scene: PackedScene = preload("res://FireSpear.tscn")
 @export var rock_scene: PackedScene = preload("res://Rock.tscn")
 @export var enemy_scene: PackedScene = preload("res://Enemy.tscn")
 @export var mammoth_scene: PackedScene = preload("res://Mammoth.tscn")
 @export var target_scene: PackedScene = preload("res://Target.tscn")
 @export var collectible_health_scene: PackedScene = preload("res://CollectibleHealth.tscn")
 @export var collectible_speed_scene: PackedScene = preload("res://CollectibleSpeed.tscn")
+@export var grass_patch_scene: PackedScene = preload("res://GrassPatch.tscn")
 
 # --- Environment Variables ---
 var noise = FastNoiseLite.new() # Used to generate random-looking but smooth terrain
@@ -53,12 +55,14 @@ func _ready():
 	# Register which scenes are allowed to be spawned across the network
 	spawner.add_spawnable_scene(player_scene.resource_path)
 	spawner.add_spawnable_scene(spear_scene.resource_path)
+	spawner.add_spawnable_scene(fire_spear_scene.resource_path)
 	spawner.add_spawnable_scene(rock_scene.resource_path)
 	spawner.add_spawnable_scene(enemy_scene.resource_path)
 	spawner.add_spawnable_scene(mammoth_scene.resource_path)
 	spawner.add_spawnable_scene(target_scene.resource_path)
 	spawner.add_spawnable_scene(collectible_health_scene.resource_path)
 	spawner.add_spawnable_scene(collectible_speed_scene.resource_path)
+	spawner.add_spawnable_scene(grass_patch_scene.resource_path)
 	add_child(spawner)
 	
 	create_multiplayer_ui()
@@ -176,7 +180,8 @@ func start_host():
 		scatter_targets(30)
 		scatter_enemies(12, 5)
 		scatter_mammoths(3)
-		scatter_collectibles(20)
+		scatter_collectibles(200)
+		scatter_grass(50)
 
 # Client joins a host
 func start_join():
@@ -220,6 +225,7 @@ func _spawn_node(data):
 		elif type == "target": return _spawn_target(data)
 		elif type == "collectible_health": return _spawn_collectible(data, collectible_health_scene)
 		elif type == "collectible_speed": return _spawn_collectible(data, collectible_speed_scene)
+		elif type == "grass_patch": return _spawn_grass(data)
 	elif data.has("pos"):
 		return _spawn_enemy(data)
 	return null
@@ -393,6 +399,24 @@ func create_mammoth_at(pos):
 	spawn_id_counter += 1
 	spawner.spawn({"pos": pos, "type": "mammoth", "spawn_id": spawn_id_counter})
 
+func scatter_grass(count):
+	for i in range(count):
+		var pos = find_random_spawn_pos()
+		if pos != Vector3.ZERO:
+			create_grass_at(pos)
+
+func create_grass_at(pos):
+	spawn_id_counter += 1
+	spawner.spawn({"pos": pos, "type": "grass_patch", "spawn_id": spawn_id_counter})
+
+func _spawn_grass(data):
+	var pos = data["pos"]
+	var spawn_id = data["spawn_id"]
+	var grass = grass_patch_scene.instantiate()
+	grass.name = "GrassPatch_" + str(spawn_id)
+	grass.position = pos
+	return grass
+
 # --- DYNAMIC SPAWNING ---
 var spawn_timer = 0.0
 var spawn_interval = 2.0 
@@ -429,6 +453,7 @@ func scatter_collectibles(count):
 	for i in range(count):
 		var pos = find_random_spawn_pos()
 		if pos != Vector3.ZERO:
-			var type = "collectible_speed" if randf() < 0.5 else "collectible_health"
+			# Favor health collectibles (80% chance) as requested
+			var type = "collectible_health" if randf() < 0.8 else "collectible_speed"
 			spawn_id_counter += 1
 			spawner.spawn({"pos": pos, "type": type, "spawn_id": spawn_id_counter})
