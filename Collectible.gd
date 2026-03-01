@@ -25,7 +25,7 @@ func _on_body_entered(body):
 	if body.has_method("restore_health") or body.has_method("apply_speed_boost"):
 		if type == Type.HEALTH:
 			# Give health to the player
-			body.restore_health(amount)
+			body.restore_health.rpc(amount)
 		elif type == Type.SPEED:
 			# Give a speed boost to the player
 			body.apply_speed_boost(1.5, duration) # 50% faster

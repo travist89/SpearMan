@@ -32,10 +32,11 @@ properties/3/spawn = true
 properties/3/replication_mode = 1
 
 [node name="FireSpear" type="RigidBody3D"]
+collision_mask = 3
 mass = 2.0
 gravity_scale = 1.5
 script = ExtResource("1_spear")
-damage = 25
+damage = 40
 is_fire_spear = true
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]

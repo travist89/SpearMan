@@ -16,7 +16,7 @@ var peer = ENetMultiplayerPeer.new()
 @export var spear_scene: PackedScene = preload("res://Spear.tscn")
 @export var fire_spear_scene: PackedScene = preload("res://FireSpear.tscn")
 @export var rock_scene: PackedScene = preload("res://Rock.tscn")
-@export var enemy_scene: PackedScene = preload("res://Enemy.tscn")
+@export var cat_scene: PackedScene = preload("res://Enemy.tscn")
 @export var mammoth_scene: PackedScene = preload("res://Mammoth.tscn")
 @export var target_scene: PackedScene = preload("res://Target.tscn")
 @export var collectible_health_scene: PackedScene = preload("res://CollectibleHealth.tscn")
@@ -46,7 +46,12 @@ func _ready():
 	# --- Setup Multiplayer Spawner ---
 	spawner = MultiplayerSpawner.new()
 	spawner.name = "MultiplayerSpawner" 
-	spawner.spawn_path = get_path() # Objects will be added as children of World
+	# FIX: spawn_path must point to the World node ("..") so spawned objects become
+	# direct children of World (siblings of the spawner). 
+	# This is critical because World.gd logic (like counting enemies) iterates over get_children().
+	# If spawn_path was "." (default), enemies would be children of the Spawner, breaking the count logic
+	# and causing infinite spawning loops and network floods.
+	spawner.spawn_path = ".." 
 	
 	# The spawn_function is called whenever we want to spawn something networked.
 	# It ensures the object is initialized correctly on all machines.
@@ -57,7 +62,7 @@ func _ready():
 	spawner.add_spawnable_scene(spear_scene.resource_path)
 	spawner.add_spawnable_scene(fire_spear_scene.resource_path)
 	spawner.add_spawnable_scene(rock_scene.resource_path)
-	spawner.add_spawnable_scene(enemy_scene.resource_path)
+	spawner.add_spawnable_scene(cat_scene.resource_path)
 	spawner.add_spawnable_scene(mammoth_scene.resource_path)
 	spawner.add_spawnable_scene(target_scene.resource_path)
 	spawner.add_spawnable_scene(collectible_health_scene.resource_path)
@@ -178,10 +183,10 @@ func start_host():
 	# Spawn initial enemies and items now that the server is active
 	if multiplayer.is_server():
 		scatter_targets(30)
-		scatter_enemies(12, 5)
-		scatter_mammoths(3)
-		scatter_collectibles(200)
-		scatter_grass(50)
+		scatter_cats(12, 5)
+		scatter_mammoths(10)
+		scatter_collectibles(40)
+		spawn_dense_grass()
 
 # Client joins a host
 func start_join():
@@ -211,7 +216,13 @@ func hide_spawn_ui_on_client():
 func add_player(id = 1, location_index = 2):
 	if not multiplayer.is_server(): return
 	# This triggers _spawn_node on ALL peers
-	spawner.spawn({"id": id, "location_index": location_index})
+	var player_node = spawner.spawn({"id": id, "location_index": location_index})
+	
+	# Explicitly set authority to the player
+	# This ensures the client controls their own player object
+	# We use the returned node from spawn() which is safer than get_node() immediately
+	if player_node:
+		player_node.set_multiplayer_authority(id)
 
 # --- CENTRAL SPAWN DISPATCHER ---
 # This function is called by the MultiplayerSpawner on ALL machines when spawner.spawn() 
@@ -227,7 +238,7 @@ func _spawn_node(data):
 		elif type == "collectible_speed": return _spawn_collectible(data, collectible_speed_scene)
 		elif type == "grass_patch": return _spawn_grass(data)
 	elif data.has("pos"):
-		return _spawn_enemy(data)
+		return _spawn_cat(data)
 	return null
 
 # Logic to create a player node and position it
@@ -247,17 +258,17 @@ func _spawn_player_impl(data):
 	player.position = spawn_pos
 	return player
 
-# Logic to create an AI enemy
-func _spawn_enemy(data):
+# Logic to create an AI cat
+func _spawn_cat(data):
 	var pos = data["pos"]
 	var is_big = data["is_big"]
 	var spawn_id = data["spawn_id"]
 	
-	var enemy = enemy_scene.instantiate()
-	enemy.name = "Enemy_" + str(spawn_id) # Unique name
-	enemy.position = pos
-	enemy.is_big = is_big
-	return enemy
+	var cat = cat_scene.instantiate()
+	cat.name = "Cat_" + str(spawn_id) # Unique name
+	cat.position = pos
+	cat.is_big = is_big
+	return cat
 
 # Logic to create a Mammoth
 func _spawn_mammoth(data):
@@ -339,6 +350,13 @@ func create_terrain():
 func create_mustard_lakes():
 	var lake_inst = MeshInstance3D.new(); lake_inst.name = "MustardLake"
 	var lake_mesh = PlaneMesh.new(); lake_mesh.size = Vector2(terrain_size, terrain_size)
+	
+	var lake_mat = StandardMaterial3D.new()
+	lake_mat.albedo_color = Color(1.0, 0.9, 0.2) # Yellow water
+	lake_mat.roughness = 0.1
+	lake_mat.metallic = 0.3
+	lake_mesh.material = lake_mat
+	
 	lake_inst.mesh = lake_mesh; lake_inst.position.y = lake_level
 	add_child(lake_inst)
 
@@ -378,15 +396,15 @@ func scatter_targets(count):
 		spawn_id_counter += 1
 		spawner.spawn({"pos": Vector3(x, y + 1.5, z), "type": "target", "spawn_id": spawn_id_counter})
 
-func scatter_enemies(small_count, big_count):
+func scatter_cats(small_count, big_count):
 	for i in range(small_count):
 		var pos = find_random_spawn_pos()
-		if pos != Vector3.ZERO: create_enemy_at(pos, false)
+		if pos != Vector3.ZERO: create_cat_at(pos, false)
 	for i in range(big_count):
 		var pos = find_random_spawn_pos()
-		if pos != Vector3.ZERO: create_enemy_at(pos, true)
+		if pos != Vector3.ZERO: create_cat_at(pos, true)
 
-func create_enemy_at(pos, is_big):
+func create_cat_at(pos, is_big):
 	spawn_id_counter += 1
 	spawner.spawn({"pos": pos, "is_big": is_big, "spawn_id": spawn_id_counter})
 
@@ -399,11 +417,43 @@ func create_mammoth_at(pos):
 	spawn_id_counter += 1
 	spawner.spawn({"pos": pos, "type": "mammoth", "spawn_id": spawn_id_counter})
 
-func scatter_grass(count):
-	for i in range(count):
-		var pos = find_random_spawn_pos()
-		if pos != Vector3.ZERO:
-			create_grass_at(pos)
+func spawn_dense_grass():
+	# Iterate through the terrain grid to place grass densely
+	# We use a second noise layer to create "clusters" or "patches" of grass
+	var grass_noise = FastNoiseLite.new()
+	grass_noise.seed = noise.seed + 100 # Different seed for vegetation pattern
+	grass_noise.frequency = 0.05 # Higher frequency = smaller, more frequent clusters
+	grass_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+
+	var step = 1 # High density inside clusters
+	for z in range(0, terrain_resolution + 1, step):
+		for x in range(0, terrain_resolution + 1, step):
+			var px = float(x) / terrain_resolution
+			var pz = float(z) / terrain_resolution
+			var wx = (px - 0.5) * terrain_size
+			var wz = (pz - 0.5) * terrain_size
+			
+			# Check if we are inside a grass cluster
+			var cluster_value = grass_noise.get_noise_2d(wx, wz)
+			if cluster_value < 0.4: continue # Skip if not in a dense cluster
+			
+			# Add some randomness to position so it doesn't look like a perfect grid
+			var jitter_x = randf_range(-0.4, 0.4)
+			var jitter_z = randf_range(-0.4, 0.4)
+			
+			# Recalculate world pos with jitter
+			var final_wx = wx + jitter_x
+			var final_wz = wz + jitter_z
+			
+			# Get height from terrain noise
+			var y = noise.get_noise_2d(final_wx, final_wz) * terrain_height
+			# Apply the same flattening as terrain generation
+			if abs(final_wx) < 15 and abs(final_wz) < 15: y = lerp(y, 3.0, 0.95) 
+			
+			# Only spawn above water level
+			if y > lake_level + 0.5:
+				spawn_id_counter += 1
+				spawner.spawn({"pos": Vector3(final_wx, y, final_wz), "type": "grass_patch", "spawn_id": spawn_id_counter})
 
 func create_grass_at(pos):
 	spawn_id_counter += 1
@@ -423,24 +473,33 @@ var spawn_interval = 2.0
 var max_enemies = 50 
 
 func _physics_process(delta):
+	# Check if multiplayer peer is valid before checking server status
+	# If there is no peer, we are not in a multiplayer session
+	if not multiplayer.has_multiplayer_peer():
+		return
+		
+	# Check connection status explicitly
+	if multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_DISCONNECTED:
+		return
+
 	# Only the server spawns new enemies during gameplay
 	if multiplayer.is_server():
 		spawn_timer += delta
 		if spawn_timer >= spawn_interval:
 			spawn_timer = 0.0
-			try_spawn_random_enemy()
+			try_spawn_random_cat()
 
-func try_spawn_random_enemy():
+func try_spawn_random_cat():
 	var current_enemies = 0
 	for child in get_children():
-		if "Enemy" in child.name or "Mammoth" in child.name:
+		if "Cat" in child.name or "Mammoth" in child.name:
 			current_enemies += 1
 			
 	if current_enemies < max_enemies:
 		var pos = find_random_spawn_pos()
 		if pos != Vector3.ZERO:
-			if randf() < 0.2: create_mammoth_at(pos)
-			else: create_enemy_at(pos, randf() < 0.3)
+			if randf() < 0.5: create_mammoth_at(pos)
+			else: create_cat_at(pos, randf() < 0.3)
 
 func find_random_spawn_pos():
 	var x = randf_range(-terrain_size/2, terrain_size/2)
@@ -449,9 +508,17 @@ func find_random_spawn_pos():
 	if y > lake_level + 1.0: return Vector3(x, y + 2.0, z)
 	return Vector3.ZERO
 
+func find_ground_spawn_pos():
+	var x = randf_range(-terrain_size/2, terrain_size/2)
+	var z = randf_range(-terrain_size/2, terrain_size/2)
+	var y = noise.get_noise_2d(x, z) * terrain_height
+	# Spawn exactly on the ground, but only if above water level
+	if y > lake_level + 0.5: return Vector3(x, y, z)
+	return Vector3.ZERO
+
 func scatter_collectibles(count):
 	for i in range(count):
-		var pos = find_random_spawn_pos()
+		var pos = find_ground_spawn_pos()
 		if pos != Vector3.ZERO:
 			# Favor health collectibles (80% chance) as requested
 			var type = "collectible_health" if randf() < 0.8 else "collectible_speed"

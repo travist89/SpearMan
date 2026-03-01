@@ -6,16 +6,17 @@ extends CharacterBody3D
 
 # @export variables are visible in the Godot Editor inspector, 
 # making it easy to tweak values without changing code.
-@export var speed = 5.0
-@export var sprint_speed = 10.0
+@export var speed = 15.0
+@export var sprint_speed = 30.0
 @export var jump_velocity = 10.0
 @export var mouse_sensitivity = 0.003
 @export var throw_force = 45.0
 @export var spear_scene: PackedScene # Reference to the Spear prefab
 @export var rock_scene: PackedScene = preload("res://Rock.tscn") # Preloads the Rock prefab
+@export var fire_spear_scene: PackedScene = preload("res://FireSpear.tscn") # Preloads the Fire Spear prefab
 
 # --- Player State Variables ---
-var weapons = ["Spear", "Rock"]
+var weapons = ["Spear", "Rock", "Fire Spear"]
 var weapon_index = 0
 var last_throw_time = 0.0
 var throw_cooldown = 0.5
@@ -24,6 +25,7 @@ var throw_cooldown = 0.5
 @export var health = 100.0
 @export var max_stamina = 100.0
 @export var stamina = 100.0
+@export var score = 0
 
 var stamina_drain = 30.0 
 var stamina_regen = 15.0 
@@ -31,10 +33,14 @@ var speed_boost_multiplier = 1.0
 var speed_boost_time = 0.0
 var is_dead = false
 
+# Animation
+var anim_player: AnimationPlayer
+
 # UI references (only created for the local player)
 var health_bar: ProgressBar
 var stamina_bar: ProgressBar
 var weapon_label: Label
+var score_label: Label
 
 # Get the gravity setting from the project settings so it matches the rest of the game
 var gravity = ProjectSettings.get_setting("physics/3d/default_gravity")
@@ -56,6 +62,12 @@ func _enter_tree():
 
 # _ready is called after the node and all its children have entered the scene tree.
 func _ready():
+	# Ensure the player only collides with Layer 1 (World/Walls/Enemies)
+	# and ignores Layer 2 (Grass), so they don't get stuck on grass patches.
+	collision_mask = 1 
+	
+	setup_animations()
+	
 	# is_multiplayer_authority() check ensures only YOU control YOUR player.
 	if is_multiplayer_authority():
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED) # Lock mouse to center of screen
@@ -64,6 +76,48 @@ func _ready():
 	else:
 		# If this is someone else's player, don't use their camera!
 		camera.current = false
+
+func setup_animations():
+	anim_player = AnimationPlayer.new()
+	add_child(anim_player)
+	
+	var library = AnimationLibrary.new()
+	
+	# --- Idle Animation ---
+	var idle_anim = Animation.new()
+	idle_anim.loop_mode = Animation.LOOP_LINEAR
+	idle_anim.length = 2.0
+	var track_idx = idle_anim.add_track(Animation.TYPE_VALUE)
+	idle_anim.track_set_path(track_idx, "MeshInstance3D:scale")
+	idle_anim.track_insert_key(track_idx, 0.0, Vector3(1, 1, 1))
+	idle_anim.track_insert_key(track_idx, 1.0, Vector3(1.05, 0.95, 1.05)) # Breathe out
+	idle_anim.track_insert_key(track_idx, 2.0, Vector3(1, 1, 1))
+	library.add_animation("Idle", idle_anim)
+	
+	# --- Run Animation ---
+	var run_anim = Animation.new()
+	run_anim.loop_mode = Animation.LOOP_LINEAR
+	run_anim.length = 0.4
+	track_idx = run_anim.add_track(Animation.TYPE_VALUE)
+	run_anim.track_set_path(track_idx, "MeshInstance3D:position")
+	run_anim.track_insert_key(track_idx, 0.0, Vector3(0, 0, 0))
+	run_anim.track_insert_key(track_idx, 0.2, Vector3(0, 0.2, 0)) # Bob up
+	run_anim.track_insert_key(track_idx, 0.4, Vector3(0, 0, 0))
+	library.add_animation("Run", run_anim)
+	
+	# --- Attack Animation ---
+	var attack_anim = Animation.new()
+	attack_anim.length = 0.4
+	track_idx = attack_anim.add_track(Animation.TYPE_VALUE)
+	attack_anim.track_set_path(track_idx, "MeshInstance3D:rotation")
+	attack_anim.track_insert_key(track_idx, 0.0, Vector3(0, 0, 0))
+	attack_anim.track_insert_key(track_idx, 0.1, Vector3(deg_to_rad(-30), 0, 0)) # Wind up back
+	attack_anim.track_insert_key(track_idx, 0.2, Vector3(deg_to_rad(45), 0, 0)) # Swing forward
+	attack_anim.track_insert_key(track_idx, 0.4, Vector3(0, 0, 0)) # Return
+	library.add_animation("Attack", attack_anim)
+	
+	anim_player.add_animation_library("", library)
+	anim_player.play("Idle")
 
 # Dynamically creates a simple 2D UI for health and stamina
 func setup_ui():
@@ -92,10 +146,23 @@ func setup_ui():
 	canvas_layer.add_child(weapon_label)
 	weapon_label.position = Vector2(20, 80)
 	update_weapon_ui()
+	
+	score_label = Label.new()
+	canvas_layer.add_child(score_label)
+	# Position in top right corner
+	score_label.anchor_left = 1.0
+	score_label.anchor_right = 1.0
+	score_label.offset_left = -150
+	score_label.offset_top = 20
+	update_score_ui()
 
 func update_weapon_ui():
 	if weapon_label:
-		weapon_label.text = "Weapon: " + weapons[weapon_index] + " (Press 1 or 2 to switch)"
+		weapon_label.text = "Weapon: " + weapons[weapon_index] + " (Press 1, 2, or 3 to switch)"
+
+func update_score_ui():
+	if score_label:
+		score_label.text = "Score: " + str(score)
 
 # @rpc marks this function as a Remote Procedure Call.
 # "any_peer" means any player can call it (needed for server to call it on clients).
@@ -109,10 +176,16 @@ func take_damage(amount):
 	if health_bar: health_bar.value = health
 	if health <= 0: die()
 
+@rpc("any_peer", "call_local", "reliable")
 func restore_health(amount):
 	if is_dead: return
 	health = min(health + amount, max_health)
 	if health_bar: health_bar.value = health
+
+@rpc("any_peer", "call_local", "reliable")
+func add_score(amount):
+	score += amount
+	update_score_ui()
 
 func apply_speed_boost(multiplier, duration):
 	speed_boost_multiplier = multiplier
@@ -122,8 +195,16 @@ func apply_speed_boost(multiplier, duration):
 func die():
 	if is_dead: return
 	is_dead = true
+	
+	# Disable collision and hide player locally/immediately to prevent enemies from sticking
+	collision_layer = 0
+	collision_mask = 0
+	visible = false
+	
 	# Only the owner of the player initiates the respawn RPC
 	if is_multiplayer_authority(): 
+		# Wait for a moment before respawning to let enemies reset
+		await get_tree().create_timer(2.0).timeout
 		respawn.rpc()
 
 @rpc("any_peer", "call_local", "reliable")
@@ -134,6 +215,11 @@ func respawn():
 	# Move player back to a starting position
 	global_position = Vector3(0, 30, 0)
 	velocity = Vector3.ZERO
+	
+	# Re-enable collision and visibility (assuming default layer 1)
+	collision_layer = 1
+	collision_mask = 1
+	visible = true
 
 # Handles mouse movement and keyboard shortcuts for non-movement actions
 func _unhandled_input(event):
@@ -161,6 +247,10 @@ func _unhandled_input(event):
 		elif Time.get_ticks_msec() / 1000.0 - last_throw_time > throw_cooldown:
 			# Enforce a cooldown between throws
 			last_throw_time = Time.get_ticks_msec() / 1000.0
+			
+			# Trigger attack animation on all clients
+			play_attack_anim.rpc()
+			
 			# Call the RPC on the server to spawn the projectile
 			throw_projectile.rpc(weapon_index)
 			
@@ -170,6 +260,9 @@ func _unhandled_input(event):
 		update_weapon_ui()
 	if Input.is_key_pressed(KEY_2):
 		weapon_index = 1
+		update_weapon_ui()
+	if Input.is_key_pressed(KEY_3):
+		weapon_index = 2
 		update_weapon_ui()
 
 # _physics_process is called every physics frame (usually 60 times per second)
@@ -236,6 +329,37 @@ func _physics_process(delta):
 	# move_and_slide handles collisions and sliding along walls automatically
 	move_and_slide()
 
+func _process(delta):
+	# Handle animations for ALL players (local and remote)
+	if anim_player.current_animation == "Attack": return
+	
+	var is_moving = false
+	
+	if is_multiplayer_authority():
+		# Local player: use velocity directly
+		is_moving = velocity.length() > 0.1 and is_on_floor()
+	else:
+		# Remote player: estimate movement based on position change
+		var current_pos = global_position
+		if not has_meta("last_pos"): set_meta("last_pos", current_pos)
+		var last_pos = get_meta("last_pos")
+		var move_speed = current_pos.distance_to(last_pos) / delta
+		set_meta("last_pos", current_pos)
+		
+		is_moving = move_speed > 0.1 and is_on_floor()
+	
+	if is_moving:
+		anim_player.play("Run")
+	else:
+		anim_player.play("Idle")
+
+# RPC to play attack animation on all clients
+@rpc("call_local", "reliable")
+func play_attack_anim():
+	anim_player.stop() # Stop any current animation
+	anim_player.play("Attack")
+	# After attack finishes, it will naturally fall back to Idle/Run in _process
+
 # Server-side logic for spawning projectiles
 # Spawning objects MUST be done on the server to ensure everyone sees the same thing.
 @rpc("any_peer", "call_local")
@@ -246,6 +370,8 @@ func throw_projectile(type):
 	var projectile_scene = spear_scene
 	if type == 1:
 		projectile_scene = rock_scene
+	elif type == 2:
+		projectile_scene = fire_spear_scene
 		
 	if projectile_scene:
 		var p = projectile_scene.instantiate()
@@ -255,6 +381,9 @@ func throw_projectile(type):
 		
 		# Set projectile position to the player's hand
 		p.global_transform = hand_position.global_transform
+		
+		# Set the owner ID so we know who threw it (for scoring)
+		p.set_meta("owner_id", name.to_int())
 		
 		# Make the projectile face where the camera is looking
 		var camera_forward = -camera.global_transform.basis.z

@@ -4,8 +4,16 @@ extends StaticBody3D
 
 # This function is called by projectiles (Spear/Rock) when they hit the target
 @rpc("any_peer", "call_local", "reliable")
-func explode():
+func explode(killer_id = 0):
 	print("Target Hit!")
+	
+	# Award score if a player killed this target
+	if killer_id != 0 and multiplayer.is_server():
+		# Find the player node with the matching peer ID
+		var player_node = get_tree().root.find_child(str(killer_id), true, false)
+		if player_node and player_node.has_method("add_score"):
+			player_node.add_score.rpc(1)
+
 	# Create a simple visual effect before disappearing
 	spawn_particles()
 	# remove the target from the scene

@@ -1,0 +1,33 @@
+# Cline Project Instructions
+
+You are working on a Godot 4 project called "TestVibeGame". This is a 3rd-person spear-throwing game with multiplayer support.
+
+## Project Structure
+- **Scripts**: Written in GDScript (`.gd` extension).
+- **Scenes**: Godot scene files (`.tscn` extension).
+- **Assets**: Located in the root directory (e.g., `icon.svg`).
+
+## Key Files
+- `Player.gd` / `Player.tscn`: Player character logic and scene.
+- `Spear.gd` / `Spear.tscn`: Projectile logic.
+- `World.gd` / `World.tscn`: Main game world and level generation.
+- `Enemy.gd` / `Enemy.tscn`: Enemy logic.
+- `Mammoth.gd` / `Mammoth.tscn`: Powerful enemy type (Megafauna). Treat as an enemy.
+- `Collectible.gd`: Base class for collectibles.
+
+## Multiplayer
+- Uses Godot's High-Level Multiplayer API.
+- Testing requires running multiple instances (Debug > Run Multiple Instances).
+- `GODOT_NETWORKING_DOCS.md` contains detailed networking documentation.
+
+## Development Guidelines
+- Follow GDScript best practices.
+- Use `class_name` for script classes where appropriate.
+- When modifying scenes (`.tscn`), be careful not to break dependencies.
+- Use `print()` for debugging network events.
+
+## MCP Tools
+- You have access to standard file manipulation and command execution tools.
+- Use `read_file` to inspect code.
+- Use `replace_in_file` for targeted edits.
+- Use `execute_command` to run Godot from the command line if necessary (e.g., `godot --headless` for tests).

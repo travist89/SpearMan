@@ -11,6 +11,7 @@ extends CharacterBody3D
 @export var health = 30.0
 @export var is_big = false # If true, this enemy becomes a "Big" variant
 
+var is_dead = false
 var gravity = ProjectSettings.get_setting("physics/3d/default_gravity")
 var anim_player: AnimationPlayer
 
@@ -21,6 +22,12 @@ var wander_timer = 0.0
 var run_timeout = 0.0
 
 func _ready():
+	# Ensure the enemy only collides with Layer 1
+	# and ignores Layer 2 (Grass), so they don't get stuck on grass patches.
+	collision_mask = 1 
+	
+	create_cat_model()
+
 	setup_animations()
 	
 	# Specialized setup for big enemies
@@ -30,8 +37,6 @@ func _ready():
 		speed = 2.5
 		damage = 40
 		scale = Vector3(2, 2, 2) # Make the model twice as large
-
-	create_cat_model()
 		
 	# --- MULTIPLAYER LOGIC ---
 	# AI logic and movement calculations should ONLY run on the server.
@@ -40,7 +45,6 @@ func _ready():
 	if not multiplayer.is_server():
 		# Disable physics processing for clients to save CPU
 		set_physics_process(false)
-		return
 
 func setup_animations():
 	anim_player = AnimationPlayer.new()
@@ -84,6 +88,7 @@ func setup_animations():
 	anim_player.play("Idle")
 
 func _process(delta):
+	if is_dead: return
 	# On clients, we need to check if the enemy is moving to play animations
 	# since physics_process is disabled.
 	if not multiplayer.is_server():
@@ -206,6 +211,7 @@ func create_cat_model():
 
 # Called when hit by a projectile
 func take_damage(amount):
+	if is_dead: return
 	# Only the server should manage enemy health
 	if not multiplayer.is_server(): return
 	
@@ -233,6 +239,8 @@ func find_nearest_player():
 	return nearest
 
 func _physics_process(delta):
+	if is_dead: return
+	
 	# Apply gravity
 	if not is_on_floor():
 		velocity.y -= gravity * delta
@@ -275,7 +283,9 @@ func _physics_process(delta):
 		velocity.z = direction.z * speed * 0.5
 		
 		if velocity.length() > 0.1:
-			look_at(global_position + velocity, Vector3.UP)
+			var look_target = global_position + velocity
+			if not global_position.is_equal_approx(look_target) and Vector3.UP.cross(velocity).length_squared() > 0.001:
+				look_at(look_target, Vector3.UP)
 
 	# Actually move the enemy
 	move_and_slide()
@@ -299,14 +309,21 @@ func _physics_process(delta):
 # RPC for the death effect. "call_local" means it runs on server + all clients.
 @rpc("any_peer", "call_local", "reliable")
 func explode():
-	if not is_inside_tree(): return
+	if not is_inside_tree() or is_dead: return
 	print("Enemy Exploded!")
+	is_dead = true
 	spawn_particles()
 	
-	# Only the server should remove the object. 
-	# The MultiplayerSpawner will automatically handle despawning on clients.
-	if multiplayer.is_server():
-		queue_free()
+	# Disable collision
+	$CollisionShape3D.disabled = true
+	
+	# Stop animation
+	if anim_player:
+		anim_player.stop()
+	
+	# Fall over animation (rotate 90 degrees sideways)
+	var tween = create_tween()
+	tween.tween_property(self, "rotation:z", rotation.z + PI/2, 0.5).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 
 # Visual effect for enemy death
 func spawn_particles():

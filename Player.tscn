@@ -7,7 +7,12 @@
 radius = 0.5
 height = 2.0
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_skin"]
+albedo_color = Color(0.8, 0.6, 0.4, 1)
+roughness = 0.8
+
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_p"]
+material = SubResource("StandardMaterial3D_skin")
 radius = 0.5
 height = 2.0
 
@@ -23,6 +28,18 @@ size = Vector3(0.6, 0.8, 0.05)
 material = SubResource("StandardMaterial3D_cloth")
 inner_radius = 0.48
 outer_radius = 0.55
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_hair"]
+albedo_color = Color(0.2, 0.1, 0.05, 1)
+roughness = 1.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_hair"]
+material = SubResource("StandardMaterial3D_hair")
+size = Vector3(0.6, 0.4, 0.6)
+
+[sub_resource type="BoxMesh" id="BoxMesh_beard"]
+material = SubResource("StandardMaterial3D_hair")
+size = Vector3(0.4, 0.3, 0.2)
 
 [sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_s"]
 properties/0/path = NodePath(".:position")
@@ -50,6 +67,14 @@ shape = SubResource("CapsuleShape3D_p")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
 mesh = SubResource("CapsuleMesh_p")
+
+[node name="Hair" type="MeshInstance3D" parent="MeshInstance3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+mesh = SubResource("BoxMesh_hair")
+
+[node name="Beard" type="MeshInstance3D" parent="MeshInstance3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -0.4)
+mesh = SubResource("BoxMesh_beard")
 
 [node name="LoinCloth" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.4, 0)
