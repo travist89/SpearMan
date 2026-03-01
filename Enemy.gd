@@ -12,13 +12,17 @@ extends CharacterBody3D
 @export var is_big = false # If true, this enemy becomes a "Big" variant
 
 var gravity = ProjectSettings.get_setting("physics/3d/default_gravity")
+var anim_player: AnimationPlayer
 
 var player = null
 var state = "wander"
 var wander_target = Vector3.ZERO
 var wander_timer = 0.0
+var run_timeout = 0.0
 
 func _ready():
+	setup_animations()
+	
 	# Specialized setup for big enemies
 	if is_big:
 		max_health = 100.0
@@ -26,7 +30,8 @@ func _ready():
 		speed = 2.5
 		damage = 40
 		scale = Vector3(2, 2, 2) # Make the model twice as large
-		create_legs()
+
+	create_cat_model()
 		
 	# --- MULTIPLAYER LOGIC ---
 	# AI logic and movement calculations should ONLY run on the server.
@@ -37,27 +42,167 @@ func _ready():
 		set_physics_process(false)
 		return
 
-# Programmatically creates legs for the big enemy variant
-func create_legs():
-	for i in range(4):
+func setup_animations():
+	anim_player = AnimationPlayer.new()
+	add_child(anim_player)
+	
+	var library = AnimationLibrary.new()
+	
+	# --- Idle Animation ---
+	var idle_anim = Animation.new()
+	idle_anim.loop_mode = Animation.LOOP_LINEAR
+	idle_anim.length = 2.0
+	var track_idx = idle_anim.add_track(Animation.TYPE_VALUE)
+	# Animate the new CatModel node instead of MeshInstance3D
+	idle_anim.track_set_path(track_idx, "CatModel:scale")
+	idle_anim.track_insert_key(track_idx, 0.0, Vector3(1, 1, 1))
+	idle_anim.track_insert_key(track_idx, 1.0, Vector3(1.05, 0.95, 1.05)) # Breathing effect
+	idle_anim.track_insert_key(track_idx, 2.0, Vector3(1, 1, 1))
+	library.add_animation("Idle", idle_anim)
+	
+	# --- Run Animation ---
+	var run_anim = Animation.new()
+	run_anim.loop_mode = Animation.LOOP_LINEAR
+	run_anim.length = 0.4
+	track_idx = run_anim.add_track(Animation.TYPE_VALUE)
+	# Animate position for hopping
+	run_anim.track_set_path(track_idx, "CatModel:position")
+	run_anim.track_insert_key(track_idx, 0.0, Vector3(0, 0, 0))
+	run_anim.track_insert_key(track_idx, 0.2, Vector3(0, 0.2, 0)) # Small hop
+	run_anim.track_insert_key(track_idx, 0.4, Vector3(0, 0, 0))
+	
+	# Add rotation for running motion
+	track_idx = run_anim.add_track(Animation.TYPE_VALUE)
+	run_anim.track_set_path(track_idx, "CatModel:rotation")
+	run_anim.track_insert_key(track_idx, 0.0, Vector3(0, 0, deg_to_rad(-5)))
+	run_anim.track_insert_key(track_idx, 0.2, Vector3(0, 0, deg_to_rad(5)))
+	run_anim.track_insert_key(track_idx, 0.4, Vector3(0, 0, deg_to_rad(-5)))
+	
+	library.add_animation("Run", run_anim)
+	
+	anim_player.add_animation_library("", library)
+	anim_player.play("Idle")
+
+func _process(delta):
+	# On clients, we need to check if the enemy is moving to play animations
+	# since physics_process is disabled.
+	if not multiplayer.is_server():
+		var current_pos = global_position
+		if not has_meta("last_pos"): set_meta("last_pos", current_pos)
+		var last_pos = get_meta("last_pos")
+		var move_speed = current_pos.distance_to(last_pos) / delta
+		set_meta("last_pos", current_pos)
+		
+		# If moving, reset the timeout and play run animation
+		if move_speed > 0.1:
+			run_timeout = 0.2 # Keep running for 0.2s after stopping
+			if anim_player.current_animation != "Run":
+				anim_player.play("Run", 0.2)
+		else:
+			# If stopped, only switch to idle after timeout expires
+			run_timeout -= delta
+			if run_timeout <= 0:
+				if anim_player.current_animation != "Idle":
+					anim_player.play("Idle", 0.2)
+
+# Creates a long slender cat model
+func create_cat_model():
+	# Hide existing meshes if they exist
+	if has_node("MeshInstance3D"): $MeshInstance3D.visible = false
+	if has_node("EyeLeft"): $EyeLeft.visible = false
+	if has_node("EyeRight"): $EyeRight.visible = false
+
+	# Create a parent node for the cat model so we can animate it easily
+	var cat_root = Node3D.new()
+	cat_root.name = "CatModel"
+	add_child(cat_root)
+
+	# --- Materials ---
+	var body_mat = StandardMaterial3D.new()
+	body_mat.albedo_color = Color(0.1, 0.1, 0.1) # Black cat
+	
+	var eye_mat = StandardMaterial3D.new()
+	eye_mat.albedo_color = Color(1, 1, 0) # Yellow eyes
+	eye_mat.emission_enabled = true
+	eye_mat.emission = Color(0.5, 0.5, 0)
+
+	# --- Body (Long Cylinder) ---
+	var body = MeshInstance3D.new()
+	var body_mesh = CylinderMesh.new()
+	body_mesh.top_radius = 0.15
+	body_mesh.bottom_radius = 0.15
+	body_mesh.height = 1.2
+	body.mesh = body_mesh
+	body.material_override = body_mat
+	# Rotate body to be horizontal
+	body.rotation.x = deg_to_rad(90)
+	body.position.y = 0.5
+	cat_root.add_child(body)
+
+	# --- Head (Sphere) ---
+	var head = MeshInstance3D.new()
+	var head_mesh = SphereMesh.new()
+	head_mesh.radius = 0.25
+	head_mesh.height = 0.5
+	head.mesh = head_mesh
+	head.material_override = body_mat
+	head.position = Vector3(0, 0.7, -0.7) # Position at front of body
+	cat_root.add_child(head)
+
+	# --- Ears (Cones) ---
+	for i in [-1, 1]:
+		var ear = MeshInstance3D.new()
+		var ear_mesh = CylinderMesh.new()
+		ear_mesh.top_radius = 0.0
+		ear_mesh.bottom_radius = 0.08
+		ear_mesh.height = 0.2
+		ear.mesh = ear_mesh
+		ear.material_override = body_mat
+		ear.position = Vector3(i * 0.15, 0.9, -0.7)
+		cat_root.add_child(ear)
+
+	# --- Eyes ---
+	for i in [-1, 1]:
+		var eye = MeshInstance3D.new()
+		var eye_mesh = SphereMesh.new()
+		eye_mesh.radius = 0.05
+		eye_mesh.height = 0.1
+		eye.mesh = eye_mesh
+		eye.material_override = eye_mat
+		eye.position = Vector3(i * 0.1, 0.75, -0.9)
+		cat_root.add_child(eye)
+
+	# --- Legs (4 Cylinders) ---
+	var leg_positions = [
+		Vector3(-0.15, 0.25, -0.4), # Front Left
+		Vector3(0.15, 0.25, -0.4),  # Front Right
+		Vector3(-0.15, 0.25, 0.4),  # Back Left
+		Vector3(0.15, 0.25, 0.4)    # Back Right
+	]
+	
+	for pos in leg_positions:
 		var leg = MeshInstance3D.new()
 		var leg_mesh = CylinderMesh.new()
-		leg_mesh.top_radius = 0.1
-		leg_mesh.bottom_radius = 0.1
-		leg_mesh.height = 1.5
+		leg_mesh.top_radius = 0.05
+		leg_mesh.bottom_radius = 0.05
+		leg_mesh.height = 0.5
 		leg.mesh = leg_mesh
-		
-		var mat = StandardMaterial3D.new()
-		mat.albedo_color = Color(0.2, 0.2, 0.2)
-		leg.material_override = mat
-		
-		add_child(leg)
-		
-		# Position legs at corners using basic trigonometry
-		var angle = (PI/2) * i + (PI/4)
-		leg.position = Vector3(cos(angle) * 0.4, -0.5, sin(angle) * 0.4)
-		# Slightly tilt the legs for a better look
-		leg.rotation.z = deg_to_rad(15) if cos(angle) > 0 else deg_to_rad(-15)
+		leg.material_override = body_mat
+		leg.position = pos
+		cat_root.add_child(leg)
+
+	# --- Tail (Long Thin Cylinder) ---
+	var tail = MeshInstance3D.new()
+	var tail_mesh = CylinderMesh.new()
+	tail_mesh.top_radius = 0.04
+	tail_mesh.bottom_radius = 0.02
+	tail_mesh.height = 0.8
+	tail.mesh = tail_mesh
+	tail.material_override = body_mat
+	# Angle tail up and back
+	tail.position = Vector3(0, 0.8, 0.7)
+	tail.rotation.x = deg_to_rad(-45)
+	cat_root.add_child(tail)
 
 # Called when hit by a projectile
 func take_damage(amount):
@@ -77,6 +222,10 @@ func find_nearest_player():
 	for node in get_parent().get_children():
 		# In this project, players are named with their Peer ID (an integer)
 		if node is CharacterBody3D and node.name.is_valid_int():
+			# Ignore dead players
+			if "is_dead" in node and node.is_dead:
+				continue
+				
 			var dist = global_position.distance_to(node.global_position)
 			if dist < min_dist:
 				min_dist = dist
@@ -131,6 +280,11 @@ func _physics_process(delta):
 	# Actually move the enemy
 	move_and_slide()
 	
+	if velocity.length() > 0.1:
+		anim_player.play("Run")
+	else:
+		anim_player.play("Idle")
+	
 	# --- Damage Dealing Logic ---
 	# Check if we collided with anything during move_and_slide()
 	for i in range(get_slide_collision_count()):
@@ -148,7 +302,11 @@ func explode():
 	if not is_inside_tree(): return
 	print("Enemy Exploded!")
 	spawn_particles()
-	queue_free() # Remove the enemy from the game
+	
+	# Only the server should remove the object. 
+	# The MultiplayerSpawner will automatically handle despawning on clients.
+	if multiplayer.is_server():
+		queue_free()
 
 # Visual effect for enemy death
 func spawn_particles():

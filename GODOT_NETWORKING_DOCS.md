@@ -30,6 +30,16 @@ To ensure all 12 players see the same environment:
 - **Physical Damage**: Damage is applied via direct physical collision (`get_slide_collision`). When an AI body touches a player, it calls the player's `take_damage` RPC.
 - **Sync Optimization**: Non-local players and AI disable their complex physics logic on clients, relying purely on the `MultiplayerSynchronizer` for smooth position/rotation updates.
 
+### 4. Client-Side Animation smoothing
+To ensure smooth animations on clients despite network interpolation gaps (where position updates might pause momentarily):
+- **Timeout Logic**: We use a `run_timeout` (0.2s) in `_process` to hold the "Run" state active. This prevents rapid flickering to "Idle" between network ticks.
+- **Blending**: `anim_player.play("Run", 0.2)` is used to smoothly transition animation states.
+
+### 5. Proper Object Deletion
+When using `MultiplayerSpawner` to manage networked objects:
+- **Server Only**: `queue_free()` must **ONLY** be called on the Server. The `MultiplayerSpawner` will automatically detect the deletion and replicate the despawn to all clients.
+- **Avoid Manual Despawn**: Clients should **NEVER** manually `queue_free()` networked objects (even in RPCs like `die()`), as this creates "ghost" objects that the spawner can no longer track or delete.
+
 ---
 
 ## 🎮 Gameplay Features (v1.2)
