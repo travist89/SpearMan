@@ -16,7 +16,6 @@ var peer = ENetMultiplayerPeer.new()
 @export var spear_scene: PackedScene = preload("res://Spear.tscn")
 @export var fire_spear_scene: PackedScene = preload("res://FireSpear.tscn")
 @export var rock_scene: PackedScene = preload("res://Rock.tscn")
-@export var cat_scene: PackedScene = preload("res://Enemy.tscn")
 @export var mammoth_scene: PackedScene = preload("res://Mammoth.tscn")
 @export var target_scene: PackedScene = preload("res://Target.tscn")
 @export var collectible_health_scene: PackedScene = preload("res://CollectibleHealth.tscn")
@@ -25,10 +24,11 @@ var peer = ENetMultiplayerPeer.new()
 
 # --- Environment Variables ---
 var noise = FastNoiseLite.new() # Used to generate random-looking but smooth terrain
-var terrain_size = 250.0 
-var terrain_height = 6.0 
-var terrain_resolution = 120 
+var terrain_size = 800.0 
+var terrain_height = 40.0 
+var terrain_resolution = 300 
 var lake_level = 0.0 
+var current_seed = 0
 
 # --- Day/Night Cycle Variables ---
 var time = 0.0
@@ -62,7 +62,6 @@ func _ready():
 	spawner.add_spawnable_scene(spear_scene.resource_path)
 	spawner.add_spawnable_scene(fire_spear_scene.resource_path)
 	spawner.add_spawnable_scene(rock_scene.resource_path)
-	spawner.add_spawnable_scene(cat_scene.resource_path)
 	spawner.add_spawnable_scene(mammoth_scene.resource_path)
 	spawner.add_spawnable_scene(target_scene.resource_path)
 	spawner.add_spawnable_scene(collectible_health_scene.resource_path)
@@ -74,19 +73,11 @@ func _ready():
 	setup_lighting_and_sky()
 	
 	# --- Procedural Generation Setup ---
-	# Using a fixed seed ensures every player sees the EXACT same terrain
-	seed(12345)
-	noise.seed = 12345 
+	# We set these properties here, but the SEED is set later in initialize_world()
 	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	noise.frequency = 0.012
-	
-	# Generate terrain (this runs on everyone's computer)
-	create_terrain() 
-	create_mustard_lakes()
-	
-	# Scatter static trees and rocks (deterministic, so everyone sees them in the same spot)
-	scatter_pretzel_trees(60)
-	scatter_crouton_rocks(40)
+	noise.frequency = 0.003 # Even lower frequency for wider, smoother mountains
+	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	noise.fractal_octaves = 3 # Less octaves for smoother, less jagged mountains
 	
 	# --- Server-Only Initialization ---
 	# We moved the initial spawn logic to start_host() because
@@ -143,6 +134,8 @@ func update_day_night_cycle(delta):
 
 # UI for Connecting and Spawning
 var connection_ui: Control
+var seed_ui: Control
+var seed_input: LineEdit
 var spawn_ui: Control
 
 func create_multiplayer_ui():
@@ -156,6 +149,17 @@ func create_multiplayer_ui():
 	host_btn.pressed.connect(start_host); connection_ui.add_child(host_btn)
 	var join_btn = Button.new(); join_btn.text = "Join Game"
 	join_btn.pressed.connect(start_join); connection_ui.add_child(join_btn)
+	
+	# Menu for Seed Entry
+	seed_ui = VBoxContainer.new()
+	canvas.add_child(seed_ui)
+	seed_ui.position = Vector2(20, 100)
+	seed_ui.visible = false
+	
+	var seed_label = Label.new(); seed_label.text = "Enter Seed Word:"; seed_ui.add_child(seed_label)
+	seed_input = LineEdit.new(); seed_input.placeholder_text = "Type seed here..."; seed_ui.add_child(seed_input)
+	var start_game_btn = Button.new(); start_game_btn.text = "Start Game"
+	start_game_btn.pressed.connect(start_game_with_seed); seed_ui.add_child(start_game_btn)
 	
 	# Menu for choosing where to spawn
 	spawn_ui = VBoxContainer.new()
@@ -177,15 +181,30 @@ func start_host():
 	peer.create_server(13579) # Port number
 	multiplayer.multiplayer_peer = peer
 	
+	# Connect peer connected signal to send seed to new players
+	multiplayer.peer_connected.connect(_on_peer_connected)
+	
 	connection_ui.visible = false
+	seed_ui.visible = true
+
+func start_game_with_seed():
+	var seed_text = seed_input.text
+	if seed_text == "": seed_text = str(randi()) # Default random seed if empty
+	
+	# Convert string seed to integer
+	current_seed = seed_text.hash()
+	
+	seed_ui.visible = false
 	spawn_ui.visible = true
 	
-	# Spawn initial enemies and items now that the server is active
+	# Generate world
+	initialize_world(current_seed)
+	
+	# Since we are host, we initialize game objects
 	if multiplayer.is_server():
-		scatter_targets(30)
-		scatter_cats(12, 5)
-		scatter_mammoths(10)
-		scatter_collectibles(40)
+		scatter_targets(60)
+		scatter_mammoths(40)
+		scatter_collectibles(80)
 		spawn_dense_grass()
 
 # Client joins a host
@@ -195,7 +214,35 @@ func start_join():
 	multiplayer.multiplayer_peer = peer
 	
 	connection_ui.visible = false
+	# Wait for seed from server before showing spawn UI
+
+func _on_peer_connected(id):
+	# Send current seed to the new player
+	receive_seed.rpc_id(id, current_seed)
+
+@rpc("authority", "call_remote", "reliable")
+func receive_seed(seed_val):
+	current_seed = seed_val
+	initialize_world(current_seed)
 	spawn_ui.visible = true
+
+func initialize_world(seed_val):
+	seed(seed_val)
+	noise.seed = seed_val
+	
+	# Clear old terrain if any (though usually runs once)
+	if has_node("Terrain"):
+		$Terrain.queue_free()
+	if has_node("MustardLake"):
+		$MustardLake.queue_free()
+		
+	# Generate terrain (this runs on everyone's computer)
+	create_terrain() 
+	create_mustard_lakes()
+	
+	# Scatter static trees and rocks (deterministic, so everyone sees them in the same spot)
+	scatter_pretzel_trees(150)
+	scatter_crouton_rocks(100)
 
 # Clients call this RPC on the server to request to spawn at a specific location
 @rpc("any_peer", "call_local")
@@ -237,8 +284,6 @@ func _spawn_node(data):
 		elif type == "collectible_health": return _spawn_collectible(data, collectible_health_scene)
 		elif type == "collectible_speed": return _spawn_collectible(data, collectible_speed_scene)
 		elif type == "grass_patch": return _spawn_grass(data)
-	elif data.has("pos"):
-		return _spawn_cat(data)
 	return null
 
 # Logic to create a player node and position it
@@ -257,18 +302,6 @@ func _spawn_player_impl(data):
 	
 	player.position = spawn_pos
 	return player
-
-# Logic to create an AI cat
-func _spawn_cat(data):
-	var pos = data["pos"]
-	var is_big = data["is_big"]
-	var spawn_id = data["spawn_id"]
-	
-	var cat = cat_scene.instantiate()
-	cat.name = "Cat_" + str(spawn_id) # Unique name
-	cat.position = pos
-	cat.is_big = is_big
-	return cat
 
 # Logic to create a Mammoth
 func _spawn_mammoth(data):
@@ -297,6 +330,32 @@ func _spawn_collectible(data, scene):
 	return item
 
 # --- TERRAIN GENERATION LOGIC ---
+
+# Centralized height function to ensure terrain mesh and object placement match exactly
+func get_height_at(wx, wz):
+	var noise_val = noise.get_noise_2d(wx, wz)
+	
+	# Use a smoother curve: Preserve lowlands, raise highlands gently
+	var y = noise_val * 25.0 
+	
+	# Slight exaggeration for peaks, but less extreme
+	if y > 10.0:
+		y += (y - 10.0) * 0.5
+	
+	# Flatten the center area for the spawn altar
+	if abs(wx) < 20 and abs(wz) < 20: y = lerp(y, 3.0, 0.9) 
+	
+	# --- World Borders (Walls) ---
+	var dist_x = abs(wx) / (terrain_size / 2.0)
+	var dist_z = abs(wz) / (terrain_size / 2.0)
+	var dist_edge = max(dist_x, dist_z)
+	
+	if dist_edge > 0.9:
+		var wall_height = (dist_edge - 0.9) * 10.0 * 50.0 
+		y += wall_height
+		
+	return y
+
 # Uses a SurfaceTool to build a 3D mesh from scratch using Noise values
 func create_terrain():
 	var st = SurfaceTool.new()
@@ -309,14 +368,12 @@ func create_terrain():
 			var wx = (px - 0.5) * terrain_size
 			var wz = (pz - 0.5) * terrain_size
 			
-			# Get height from noise
-			var y = noise.get_noise_2d(wx, wz) * terrain_height
-			# Flatten the center area for the spawn altar
-			if abs(wx) < 15 and abs(wz) < 15: y = lerp(y, 3.0, 0.95) 
+			var y = get_height_at(wx, wz)
 			
-			# Pick a color based on height (Sand at low, Grass at medium, Rock at high)
-			var color = Color(0.2, 0.45, 0.1) 
-			if y < lake_level + 1.0: color = Color(0.95, 0.85, 0.3) # Sand
+			# Pick a color based on height
+			var color = Color(0.2, 0.45, 0.1) # Grass
+			if y < lake_level + 2.0: color = Color(0.95, 0.85, 0.3) # Sand
+			elif y > 25.0: color = Color(0.5, 0.5, 0.5) # Rock/Snow high up
 			
 			st.set_color(color)
 			st.add_vertex(Vector3(wx, y, wz))
@@ -367,46 +424,91 @@ func scatter_pretzel_trees(count):
 	for i in range(count):
 		var x = randf_range(-terrain_size/2, terrain_size/2)
 		var z = randf_range(-terrain_size/2, terrain_size/2)
-		var y = noise.get_noise_2d(x, z) * terrain_height
+		var y = get_height_at(x, z)
 		if y < lake_level + 1.0: continue # Don't put trees in the water
 		create_pretzel_tree_at(Vector3(x, y, z))
 
 func create_pretzel_tree_at(pos):
-	var tree = Node3D.new(); tree.name = "PretzelTree"; add_child(tree); tree.position = pos
+	var tree = StaticBody3D.new(); tree.name = "PretzelTree"; add_child(tree); tree.position = pos
+	
+	# Create a brown material for the pretzel tree
+	var mat = StandardMaterial3D.new()
+	mat.albedo_color = Color(0.6, 0.4, 0.2) # Pretzel brown
+	mat.roughness = 0.8
+	
 	# Simple cylinder for the trunk
-	var trunk = MeshInstance3D.new(); trunk.mesh = CylinderMesh.new(); trunk.mesh.height = 3.0
-	trunk.position.y = 1.5; tree.add_child(trunk)
+	var trunk_mesh = CylinderMesh.new()
+	trunk_mesh.height = 3.0
+	
+	var trunk = MeshInstance3D.new()
+	trunk.mesh = trunk_mesh
+	trunk.material_override = mat
+	trunk.position.y = 1.5
+	tree.add_child(trunk)
+	
+	# Collision for the trunk
+	var col = CollisionShape3D.new()
+	col.shape = trunk_mesh.create_trimesh_shape()
+	col.position.y = 1.5
+	tree.add_child(col)
+	
+	# Add some twisted branches to make it look like a pretzel
+	for i in range(3):
+		var branch = MeshInstance3D.new()
+		branch.mesh = CylinderMesh.new()
+		branch.mesh.top_radius = 0.3
+		branch.mesh.bottom_radius = 0.4
+		branch.mesh.height = 2.0
+		branch.material_override = mat
+		
+		branch.position.y = 2.5
+		branch.rotation.z = deg_to_rad(45 + (i * 120))
+		branch.rotation.y = deg_to_rad(i * 120)
+		tree.add_child(branch)
+		
+		# Collision for branches
+		var branch_col = CollisionShape3D.new()
+		branch_col.shape = branch.mesh.create_trimesh_shape()
+		branch_col.position = branch.position
+		branch_col.rotation = branch.rotation
+		tree.add_child(branch_col)
 
 func scatter_crouton_rocks(count):
 	for i in range(count):
 		var x = randf_range(-terrain_size/2, terrain_size/2)
 		var z = randf_range(-terrain_size/2, terrain_size/2)
-		var y = noise.get_noise_2d(x, z) * terrain_height
+		var y = get_height_at(x, z)
 		if y < lake_level + 1.0: continue
-		var rock = MeshInstance3D.new(); rock.mesh = BoxMesh.new(); add_child(rock)
-		rock.position = Vector3(x, y, z)
+		
+		var rock = MeshInstance3D.new(); rock.name = "CroutonRock"; add_child(rock)
+		
+		# Make it look like a crouton (toasted cube)
+		var mesh = BoxMesh.new()
+		# Slightly random size
+		var size = randf_range(0.8, 1.2)
+		mesh.size = Vector3(size, size, size)
+		
+		var mat = StandardMaterial3D.new()
+		mat.albedo_color = Color(0.85, 0.65, 0.3) # Toasted bread color
+		mat.roughness = 1.0 # Very rough like bread
+		
+		rock.mesh = mesh
+		rock.material_override = mat
+		
+		# Random rotation for more natural "tossed" look
+		rock.rotation = Vector3(randf()*TAU, randf()*TAU, randf()*TAU)
+		# Embed slightly in ground
+		rock.position = Vector3(x, y + size * 0.4, z)
 
 func scatter_targets(count):
 	for i in range(count):
 		var x = randf_range(-terrain_size/2, terrain_size/2)
 		var z = randf_range(-terrain_size/2, terrain_size/2)
-		var y = noise.get_noise_2d(x, z) * terrain_height
+		var y = get_height_at(x, z)
 		if y < lake_level + 1.0: continue
 		
 		spawn_id_counter += 1
 		spawner.spawn({"pos": Vector3(x, y + 1.5, z), "type": "target", "spawn_id": spawn_id_counter})
-
-func scatter_cats(small_count, big_count):
-	for i in range(small_count):
-		var pos = find_random_spawn_pos()
-		if pos != Vector3.ZERO: create_cat_at(pos, false)
-	for i in range(big_count):
-		var pos = find_random_spawn_pos()
-		if pos != Vector3.ZERO: create_cat_at(pos, true)
-
-func create_cat_at(pos, is_big):
-	spawn_id_counter += 1
-	spawner.spawn({"pos": pos, "is_big": is_big, "spawn_id": spawn_id_counter})
 
 func scatter_mammoths(count):
 	for i in range(count):
@@ -425,7 +527,7 @@ func spawn_dense_grass():
 	grass_noise.frequency = 0.05 # Higher frequency = smaller, more frequent clusters
 	grass_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 
-	var step = 1 # High density inside clusters
+	var step = 4 # Reduced density (was 1) to prevent spawning tens of thousands of grass nodes
 	for z in range(0, terrain_resolution + 1, step):
 		for x in range(0, terrain_resolution + 1, step):
 			var px = float(x) / terrain_resolution
@@ -435,7 +537,7 @@ func spawn_dense_grass():
 			
 			# Check if we are inside a grass cluster
 			var cluster_value = grass_noise.get_noise_2d(wx, wz)
-			if cluster_value < 0.4: continue # Skip if not in a dense cluster
+			if cluster_value < 0.6: continue # Stricter threshold (was 0.4) to spawn fewer patches
 			
 			# Add some randomness to position so it doesn't look like a perfect grid
 			var jitter_x = randf_range(-0.4, 0.4)
@@ -445,10 +547,8 @@ func spawn_dense_grass():
 			var final_wx = wx + jitter_x
 			var final_wz = wz + jitter_z
 			
-			# Get height from terrain noise
-			var y = noise.get_noise_2d(final_wx, final_wz) * terrain_height
-			# Apply the same flattening as terrain generation
-			if abs(final_wx) < 15 and abs(final_wz) < 15: y = lerp(y, 3.0, 0.95) 
+			# Get height from unified height function
+			var y = get_height_at(final_wx, final_wz)
 			
 			# Only spawn above water level
 			if y > lake_level + 0.5:
@@ -487,31 +587,30 @@ func _physics_process(delta):
 		spawn_timer += delta
 		if spawn_timer >= spawn_interval:
 			spawn_timer = 0.0
-			try_spawn_random_cat()
+			try_spawn_random_enemy()
 
-func try_spawn_random_cat():
+func try_spawn_random_enemy():
 	var current_enemies = 0
 	for child in get_children():
-		if "Cat" in child.name or "Mammoth" in child.name:
+		if "Mammoth" in child.name:
 			current_enemies += 1
 			
 	if current_enemies < max_enemies:
 		var pos = find_random_spawn_pos()
 		if pos != Vector3.ZERO:
-			if randf() < 0.5: create_mammoth_at(pos)
-			else: create_cat_at(pos, randf() < 0.3)
+			create_mammoth_at(pos)
 
 func find_random_spawn_pos():
 	var x = randf_range(-terrain_size/2, terrain_size/2)
 	var z = randf_range(-terrain_size/2, terrain_size/2)
-	var y = noise.get_noise_2d(x, z) * terrain_height
+	var y = get_height_at(x, z)
 	if y > lake_level + 1.0: return Vector3(x, y + 2.0, z)
 	return Vector3.ZERO
 
 func find_ground_spawn_pos():
 	var x = randf_range(-terrain_size/2, terrain_size/2)
 	var z = randf_range(-terrain_size/2, terrain_size/2)
-	var y = noise.get_noise_2d(x, z) * terrain_height
+	var y = get_height_at(x, z)
 	# Spawn exactly on the ground, but only if above water level
 	if y > lake_level + 0.5: return Vector3(x, y, z)
 	return Vector3.ZERO

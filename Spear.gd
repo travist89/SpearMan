@@ -10,7 +10,9 @@ func _ready():
 	# Rigidbody3D setup for collision detection
 	contact_monitor = true
 	max_contacts_reported = 1
-	# Connect the "body_entered" signal to our custom function
+	# Connect the "body_shape_entered" signal to capture specific body parts
+	connect("body_shape_entered", _on_body_shape_entered)
+	# Also connect "body_entered" for simpler bodies or non-shape events
 	connect("body_entered", _on_body_entered)
 	
 	# If we want the spear to start with a specific speed, 
@@ -18,8 +20,30 @@ func _ready():
 	if has_meta("initial_velocity"):
 		linear_velocity = get_meta("initial_velocity")
 
-# This function is called when the spear hits something
+# New function to handle specific body part collision (for Mammoths/Enemies with parts)
+func _on_body_shape_entered(body_rid, body, body_shape_index, local_shape_index):
+	if not multiplayer.is_server(): return
+	
+	# Only process enemies here (CharacterBody3D that take damage and aren't players)
+	if body is CharacterBody3D and body.has_method("take_damage") and not body.name.is_valid_int():
+		# Find the specific collision shape node that was hit
+		var owner_id = body.shape_find_owner(body_shape_index)
+		var shape_node = body.shape_owner_get_owner(owner_id)
+		
+		# If we found a specific shape node, stick to THAT instead of the body root
+		if shape_node:
+			body.take_damage(damage)
+			stick_to_target.rpc(shape_node.get_path())
+			# We handled the hit, so disable further processing for this frame/collision
+			# But since body_entered might also fire, we need to be careful not to double damage.
+			# Simplest way is to check if we are already frozen/processed.
+			return
+
+# This function is called when the spear hits something (Fallback or for non-shape bodies)
 func _on_body_entered(body):
+	# If we already processed a shape hit (and froze), don't process body_entered
+	if freeze: return
+
 	# --- MULTIPLAYER SECURITY ---
 	# Only the server should handle game logic like dealing damage.
 	# This prevents cheating and ensuring everyone sees the same outcome.
@@ -31,7 +55,7 @@ func _on_body_entered(body):
 		# Player nodes have integer names (Peer IDs).
 		if not body.name.is_valid_int():
 			body.take_damage(damage)
-			# Stick to the enemy instead of destroying
+			# Stick to the enemy root as fallback
 			stick_to_target.rpc(body.get_path())
 			return
 

@@ -62,6 +62,9 @@ func _enter_tree():
 
 # _ready is called after the node and all its children have entered the scene tree.
 func _ready():
+	# Add to players group for efficient lookups by AI
+	add_to_group("players")
+	
 	# Ensure the player only collides with Layer 1 (World/Walls/Enemies)
 	# and ignores Layer 2 (Grass), so they don't get stuck on grass patches.
 	collision_mask = 1 
@@ -270,9 +273,9 @@ func _physics_process(delta):
 	# --- MULTIPLAYER OPTIMIZATION ---
 	# We only want to run movement logic for the machine that OWNS this player.
 	if not is_multiplayer_authority():
-		# For other players, we just call move_and_slide() so their collisions 
-		# still work correctly in the physics world, but we don't calculate movement.
-		move_and_slide()
+		# For other players, do nothing. Position is handled by MultiplayerSynchronizer.
+		# calling move_and_slide() with 0 velocity (since velocity isn't synced)
+		# fights with the position sync and causes jitter.
 		return
 
 	if is_dead: return

@@ -11,7 +11,6 @@ You are working on a Godot 4 project called "TestVibeGame". This is a 3rd-person
 - `Player.gd` / `Player.tscn`: Player character logic and scene.
 - `Spear.gd` / `Spear.tscn`: Projectile logic.
 - `World.gd` / `World.tscn`: Main game world and level generation.
-- `Enemy.gd` / `Enemy.tscn`: Enemy logic.
 - `Mammoth.gd` / `Mammoth.tscn`: Powerful enemy type (Megafauna). Treat as an enemy.
 - `Collectible.gd`: Base class for collectibles.
 

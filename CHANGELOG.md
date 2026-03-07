@@ -1,5 +1,35 @@
 # Changelog
 
+## [Unreleased] - 2026-03-07
+
+### Added
+- **Mammoth Enemy Improvements:**
+  - Added randomized tail length and girth scaling (synced over network).
+  - Implemented body part-specific hit detection (Head, Tail, Legs) by reparenting collision shapes to visual bones.
+  - Added complex death animation logic where the Mammoth falls over using a Tween on a separate `VisualRoot` node, decoupling it from physics rotation.
+  - Added "Rear Up" intimidation animation state.
+- **World Generation:**
+  - Added Seed input UI to ensure all players generate the exact same terrain.
+  - Unified terrain height calculation logic (`get_height_at`) to ensure objects (Trees, Rocks, Grass) snap perfectly to the ground.
+  - Added "Mustard Lakes" (yellow water) at low elevations.
+- **Combat & Gameplay:**
+  - Added "Fire Spear" weapon (switched via keys 1-3).
+  - Added "Grass Patch" logic: grass catches fire from Fire Spears, spreads to neighbors, and damages entities standing in it.
+  - Added "Rock" weapon with knockback physics.
+  - Added "Collectible" items (Health and Speed) with proper server-side validation.
+- **Documentation:**
+  - Added extensive comments to all major script files (`Mammoth.gd`, `World.gd`, `Player.gd`, `Spear.gd`, etc.) explaining network architecture and game logic.
+
+### Changed
+- **Removed Cat Enemy:** The generic `Cat.gd` and `Enemy.tscn` have been removed in favor of the more complex Mammoth AI.
+- **Optimization:**
+  - Reduced Grass Patch density significantly to improve performance.
+  - Implemented AI tick rate throttling (Mammoths update logic 5 times/second instead of 60).
+  - Added players to a "players" group for faster lookup by AI.
+- **Refactoring:**
+  - `Spear.gd` now handles "sticky" logic using `RemoteTransform3D` instead of reparenting, ensuring network stability.
+  - `World.gd` now manages the day/night cycle and environment settings centrally.
+
 ## [Fixed] - 2026-03-01
 
 ### Critical Bug Fixes

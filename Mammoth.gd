@@ -12,6 +12,17 @@ extends CharacterBody3D
 @export var max_health = 250.0
 @export var health = 250.0
 
+# Synced variables for tail size
+@export var tail_length_scale: float = 1.0:
+	set(value):
+		tail_length_scale = value
+		update_tail_scale()
+
+@export var tail_girth_scale: float = 1.0:
+	set(value):
+		tail_girth_scale = value
+		update_tail_scale()
+
 var is_dead = false
 var gravity = ProjectSettings.get_setting("physics/3d/default_gravity")
 var anim_player: AnimationPlayer
@@ -22,6 +33,7 @@ var wander_target = Vector3.ZERO
 var wander_timer = 0.0
 var run_timeout = 0.0 # Timer to smooth out animation transitions
 var visual_root: Node3D
+var sync_pairs = []
 
 func _ready():
 	# Ensure the mammoth only collides with Layer 1
@@ -35,12 +47,47 @@ func _ready():
 	visual_root = Node3D.new()
 	visual_root.name = "VisualRoot"
 	add_child(visual_root)
+
+	# Reparent CollisionHead to Head visual so headshots stick and bob correctly
+	var col_head = get_node_or_null("CollisionHead")
+	var vis_head = get_node_or_null("Head")
+	if col_head and vis_head:
+		col_head.reparent(vis_head)
+
+	# Setup Tail collision reparenting
+	var tail = get_node_or_null("Tail")
+	if tail:
+		# Reparent collision shape to tail so it scales and moves with it
+		var tail_col = get_node_or_null("CollisionTail")
+		if tail_col:
+			tail_col.reparent(tail)
+	
+	# Randomize Tail size drastically (Length and Girth) - SERVER ONLY
+	if multiplayer.is_server():
+		# Length scale (Y axis) - Range 0.5 to 2.5
+		self.tail_length_scale = randf_range(0.5, 2.5)
+		# Girth scale (X and Z axes) - Range 0.5 to 3.0
+		self.tail_girth_scale = randf_range(0.5, 3.0)
 	
 	# Move visual parts to VisualRoot so they rotate with it
 	for part_name in ["Body", "Head", "Tail", "LegBL", "LegBR", "LegFL", "LegFR"]:
 		var node = get_node_or_null(part_name)
 		if node:
 			node.reparent(visual_root)
+
+	# Setup collision syncing for Body and Legs (since we can't reparent them safely)
+	# Body
+	var col_body = get_node_or_null("CollisionShape3D")
+	var vis_body = get_node_or_null("VisualRoot/Body")
+	if col_body and vis_body:
+		sync_pairs.append({"col": col_body, "vis": vis_body})
+	
+	# Legs
+	for leg_name in ["LegFL", "LegFR", "LegBL", "LegBR"]:
+		var col_leg = get_node_or_null("Collision" + leg_name)
+		var vis_leg = get_node_or_null("VisualRoot/" + leg_name)
+		if col_leg and vis_leg:
+			sync_pairs.append({"col": col_leg, "vis": vis_leg})
 	
 	# --- MULTIPLAYER LOGIC ---
 	# Only the server should handle Mammoth AI and movement.
@@ -49,6 +96,17 @@ func _ready():
 	
 	if not multiplayer.is_server():
 		set_physics_process(false)
+
+func update_tail_scale():
+	var tail = get_node_or_null("VisualRoot/Tail")
+	# If not yet in VisualRoot, check direct child
+	if not tail:
+		tail = get_node_or_null("Tail")
+		
+	if tail:
+		tail.scale.y = tail_length_scale
+		tail.scale.x = tail_girth_scale
+		tail.scale.z = tail_girth_scale
 
 func setup_animations():
 	anim_player = AnimationPlayer.new()
@@ -264,14 +322,43 @@ func setup_animations():
 		dead_anim.track_set_path(track_idx, "VisualRoot/" + leg_name + ":rotation")
 		dead_anim.track_insert_key(track_idx, 0.0, Vector3.ZERO)
 		
+	# Force Tail to stop wagging by resetting its rotation
+	track_idx = dead_anim.add_track(Animation.TYPE_VALUE)
+	dead_anim.track_set_path(track_idx, "VisualRoot/Tail:rotation")
+	dead_anim.track_insert_key(track_idx, 0.0, Vector3(deg_to_rad(-135), 0, 0)) # Base pose
+	
+	# Force Head and Body to stop moving by resetting their positions and rotations
+	track_idx = dead_anim.add_track(Animation.TYPE_VALUE)
+	dead_anim.track_set_path(track_idx, "VisualRoot/Head:position")
+	dead_anim.track_insert_key(track_idx, 0.0, Vector3(0, 4.0, -0.5)) # Base Pos
+	
+	track_idx = dead_anim.add_track(Animation.TYPE_VALUE)
+	dead_anim.track_set_path(track_idx, "VisualRoot/Head:rotation")
+	dead_anim.track_insert_key(track_idx, 0.0, Vector3(0, PI, 0)) # Base Rot
+	
+	track_idx = dead_anim.add_track(Animation.TYPE_VALUE)
+	dead_anim.track_set_path(track_idx, "VisualRoot/Body:position")
+	dead_anim.track_insert_key(track_idx, 0.0, Vector3(0, 2.5, 1.0)) # Base Pos
+	
+	track_idx = dead_anim.add_track(Animation.TYPE_VALUE)
+	dead_anim.track_set_path(track_idx, "VisualRoot/Body:rotation")
+	dead_anim.track_insert_key(track_idx, 0.0, Vector3(deg_to_rad(-90), deg_to_rad(180), 0)) # Base Rot
+		
 	library.add_animation("Dead", dead_anim)
 	
 	anim_player.add_animation_library("", library)
 	anim_player.play("Idle")
 
 func _process(delta):
-	if is_dead: return
+	# Sync collision shapes to visual animations
+	# This ensures spears stuck in the mammoth move with the animation (like RearUp)
+	# AND when it dies (falls over via Tween)
+	for pair in sync_pairs:
+		if is_instance_valid(pair.col) and is_instance_valid(pair.vis):
+			pair.col.global_transform = pair.vis.global_transform
 	
+	if is_dead: return
+
 	# On clients (and Host), handle animation logic if physics_process is stopped or just for visual updates
 	# But wait, physics_process handles animation on server.
 	# The issue is likely that _process continues to run and might override animation on the Host.
@@ -306,8 +393,22 @@ func take_damage(amount):
 	if is_dead: return
 	if not multiplayer.is_server(): return
 	health -= amount
+	
 	# The mammoth gets scared and runs away (flee) when hit
-	state = "flee"
+	# BUT only if it's not currently busy rearing up!
+	# Also, we explicitly check if the animation player is playing RearUp to be extra safe
+	var is_rearing = state == "rear_up" or (anim_player and anim_player.current_animation == "RearUp")
+	
+	if state != "flee" and not is_rearing:
+		state = "flee"
+		# Force an immediate AI update on the next physics frame.
+		# This ensures that if the player is close enough to trigger a "RearUp",
+		# the AI will switch to "RearUp" BEFORE the "flee" movement logic (which turns 180) has a chance to run.
+		tick_timer = tick_rate
+		
+		# Stop fleeing after 2 seconds if still alive
+		get_tree().create_timer(2.0).timeout.connect(func(): if not is_dead and state == "flee": state = "chase")
+	
 	if health <= 0:
 		# Call the death RPC so everyone sees the mammoth die
 		die.rpc()
@@ -316,45 +417,62 @@ func take_damage(amount):
 func find_nearest_player():
 	var nearest = null
 	var min_dist = INF
-	for node in get_parent().get_children():
-		# Checks if the node name is a Peer ID (integer)
-		if node is CharacterBody3D and node.name.is_valid_int():
-			# Ignore dead players
-			if "is_dead" in node and node.is_dead:
-				continue
+	# Optimized: Use group lookup instead of iterating all world children
+	var players = get_tree().get_nodes_in_group("players")
+	for node in players:
+		# Ignore dead players
+		if "is_dead" in node and node.is_dead:
+			continue
 
-			var dist = global_position.distance_to(node.global_position)
-			if dist < min_dist:
-				min_dist = dist
-				nearest = node
+		var dist = global_position.distance_to(node.global_position)
+		if dist < min_dist:
+			min_dist = dist
+			nearest = node
 	return nearest
+
+var tick_timer = 0.0
+var tick_rate = 0.2 # AI updates 5 times per second instead of 60
 
 func _physics_process(delta):
 	# Robust check for death state to ensure no movement/animation runs after death
 	if is_dead or health <= 0 or state == "dead":
+		velocity = Vector3.ZERO
 		return
 	
 	# Apply gravity
 	if not is_on_floor():
 		velocity.y -= gravity * delta
 
-	# Update target information
-	player = find_nearest_player()
+	# Update AI state less frequently to save performance
+	tick_timer += delta
+	if tick_timer >= tick_rate:
+		tick_timer = 0.0
+		# Update target information
+		player = find_nearest_player()
 
-	if player:
-		var dist = global_position.distance_to(player.global_position)
-		
-		# Change AI state based on how close the player is
-		if dist < detection_radius:
-			# If we weren't already chasing or rearing, start by rearing up!
-			if state != "chase" and state != "rear_up":
-				state = "rear_up"
-				play_rearing_animation.rpc()
-				# Set a timer to switch to chase after animation
-				await get_tree().create_timer(2.0).timeout
-				state = "chase"
-		elif state == "chase" and dist > detection_radius * 1.5:
-			state = "wander"
+		if player:
+			var dist = global_position.distance_to(player.global_position)
+			
+			# Change AI state based on how close the player is
+			if dist < detection_radius:
+				# If we weren't already chasing or rearing, start by rearing up!
+				if state != "chase" and state != "rear_up":
+					# If we were fleeing, we might be facing away.
+					# To prevent the weird "flee then immediately rear up with butt to player" behavior,
+					# let's force a face-toward-player if we were fleeing.
+					if state == "flee":
+						var target_pos = Vector3(player.global_position.x, global_position.y, player.global_position.z)
+						look_at(target_pos, Vector3.UP)
+					
+					state = "rear_up"
+					# DO NOT look_at here. The user specifically requested:
+					# "they should stay facing the direction they were before staarting the aanimaation"
+					
+					play_rearing_animation.rpc()
+					# Set a timer to switch to chase after animation
+					get_tree().create_timer(2.0).timeout.connect(func(): if not is_dead: state = "chase")
+			elif state == "chase" and dist > detection_radius * 1.5:
+				state = "wander"
 			
 	# --- AI State Machine ---
 	if state == "rear_up":
@@ -394,12 +512,29 @@ func _physics_process(delta):
 		horizontal_velocity.y = 0
 		if horizontal_velocity.length() > 0.1:
 			look_at(global_position + horizontal_velocity, Vector3.UP)
+			
+	elif state == "flee" and player:
+		# Run away from player
+		var direction = (global_position - player.global_position).normalized()
+		direction.y = 0 
+		velocity.x = direction.x * run_speed
+		velocity.z = direction.z * run_speed
+		
+		var horizontal_velocity = velocity
+		horizontal_velocity.y = 0
+		if horizontal_velocity.length() > 0.1:
+			look_at(global_position + horizontal_velocity, Vector3.UP)
+			
+	else:
+		# Stop if state is unknown to prevent infinite sliding
+		velocity.x = 0
+		velocity.z = 0
 
 	# Execute the calculated movement
 	move_and_slide()
 	
 	# Play animations based on movement only if NOT playing a prioritized action like RearUp
-	if anim_player.current_animation != "RearUp":
+	if not is_dead and anim_player.current_animation != "RearUp":
 		if velocity.length() > 0.1:
 			anim_player.play("Run")
 		else:
@@ -430,8 +565,8 @@ func die():
 	is_dead = true
 	state = "dead"
 	
-	# FIX: Stop all processing immediately to prevent any movement or animation overrides
-	set_process(false)
+	# FIX: Stop physics processing immediately to prevent movement
+	# But KEEP _process running so collision shapes continue to sync with the death tween!
 	set_physics_process(false)
 	velocity = Vector3.ZERO
 	
@@ -452,6 +587,7 @@ func die():
 	# Stop animation and force play "Dead"
 	if anim_player:
 		anim_player.stop()
+		anim_player.clear_queue()
 		anim_player.play("Dead")
 		
 	# Disable all collision shapes

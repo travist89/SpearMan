@@ -58,6 +58,12 @@ properties/1/replication_mode = 1
 properties/2/path = NodePath(".:health")
 properties/2/spawn = true
 properties/2/replication_mode = 2
+properties/3/path = NodePath(".:tail_length_scale")
+properties/3/spawn = true
+properties/3/replication_mode = 2
+properties/4/path = NodePath(".:tail_girth_scale")
+properties/4/spawn = true
+properties/4/replication_mode = 2
 
 [node name="Mammoth" type="CharacterBody3D" unique_id=1448199783]
 script = ExtResource("1_mammoth")
@@ -87,7 +93,7 @@ transform = Transform3D(1, 0, 0, 0, 0.5, 0.866025, 0, -0.866025, 0.5, 0.5, -0.5,
 mesh = SubResource("CylinderMesh_tusk")
 
 [node name="Tail" type="MeshInstance3D" parent="." unique_id=1658392048]
-transform = Transform3D(1.766063, 0, 0, 0, -0.83179706, 1.0108486, 0, -0.77666813, -1.0826, 4.7683716e-07, 0.93114483, 1.804497)
+transform = Transform3D(3.2713895, 0, 0, 0, -1.54079, 1.8724586, 0, -1.4386711, -2.005368, 4.7683716e-07, 0.93114483, 1.804497)
 mesh = SubResource("CylinderMesh_tail")
 
 [node name="CollisionTail" type="CollisionShape3D" parent="." unique_id=1738201948]

@@ -6,6 +6,7 @@ I've set up the core mechanics for your 3rd person spear-throwing game with full
 - **Player.gd / Player.tscn**: The player character with movement, camera, and health/stamina syncing.
 - **Spear.gd / Spear.tscn**: The spear projectile with physics and network synchronization.
 - **World.tscn**: Procedurally generated terrain with targets, enemies, and collectibles.
+- **Mammoth.gd / Mammoth.tscn**: The primary enemy type with complex AI behaviors.
 
 ## How to Play
 1. Open the project in Godot 4.
@@ -21,22 +22,30 @@ To test the multiplayer on your own computer, you need to run two or more instan
 2. **Start the Game**:
    - Press **F5** to run the game. Two windows will open.
 3. **Connect**:
-   - In the **first window**, click the **Host** button.
-   - In the **second window**, click the **Join** button.
+   - In the **first window**, click the **Host Game** button.
+   - Enter a **Seed Word** (or leave random) and click **Start Game**.
+   - In the **second window**, click the **Join Game** button.
    - You should now see both players in the world!
 
 ## Controls
 - **WASD / Arrow Keys**: Move the character.
 - **Shift**: Sprint (drains stamina).
 - **Mouse**: Rotate the camera.
-- **Left Click**: Throw a spear.
+- **Left Click**: Attack / Throw Weapon.
+- **1, 2, 3**: Switch Weapons (Spear, Rock, Fire Spear).
 - **Space**: Jump.
 - **Esc**: Release the mouse cursor.
 
 ## Mechanics
-- **Health**: Syncs across the network. If it reaches 0, you will respawn at the center.
-- **Stamina**: Required for sprinting. Regens over time.
-- **Enemies**: Will chase you and deal damage on contact.
+- **Combat**: 
+  - **Spear**: Sticks to enemies/walls. High accuracy.
+  - **Rock**: Knocks enemies back. Bounces.
+  - **Fire Spear**: Ignites grass patches and enemies.
+- **Enemies**: 
+  - **Mammoth**: Large megafauna that charges players. Can be headshot for extra effect.
+- **Environment**:
+  - **Grass**: Can catch fire and spread damage.
+  - **Mustard Lakes**: Water bodies at low elevations.
 - **Collectibles**: Red items restore health, Green items give a temporary speed boost.
 
 ## Documentation
