@@ -1,0 +1,28 @@
+[gd_scene load_steps=4 format=3 uid="uid://lightning_bolt_scene"]
+
+[ext_resource type="Script" path="res://LightningBolt.gd" id="1_script"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_bolt"]
+emission_enabled = true
+emission = Color(0.8, 0.9, 1, 1)
+emission_energy_multiplier = 20.0
+albedo_color = Color(0.8, 0.9, 1, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_bolt"]
+material = SubResource("StandardMaterial3D_bolt")
+top_radius = 0.1
+bottom_radius = 0.5
+height = 20.0
+
+[node name="LightningBolt" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10, 0)
+mesh = SubResource("CylinderMesh_bolt")
+
+[node name="OmniLight3D" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+light_color = Color(0.8, 0.9, 1, 1)
+light_energy = 0.0
+omni_range = 40.0

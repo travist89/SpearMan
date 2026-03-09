@@ -1,0 +1,83 @@
+[gd_scene format=3 uid="uid://cvuw7ndkra6cc"]
+
+[ext_resource type="Script" path="res://Tree.gd" id="1_tree"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_trunk"]
+height = 8.0
+radius = 0.7
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_trunk"]
+albedo_color = Color(0.4, 0.25, 0.1, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_trunk"]
+material = SubResource("StandardMaterial3D_trunk")
+top_radius = 0.3
+bottom_radius = 0.6
+height = 3.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_leaves"]
+albedo_color = Color(0.1, 0.4, 0.1, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_leaves"]
+material = SubResource("StandardMaterial3D_leaves")
+top_radius = 0.0
+bottom_radius = 2.5
+height = 6.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_fire"]
+albedo_color = Color(1, 0.5, 0, 1)
+emission_enabled = true
+emission = Color(1, 0.2, 0, 1)
+emission_energy_multiplier = 2.5
+billboard_mode = 3
+particles_anim_h_frames = 1
+particles_anim_v_frames = 1
+particles_anim_loop = false
+
+[sub_resource type="QuadMesh" id="QuadMesh_fire"]
+material = SubResource("StandardMaterial3D_fire")
+size = Vector2(0.8, 0.8)
+
+[node name="Tree" type="StaticBody3D"]
+collision_layer = 2
+collision_mask = 0
+script = ExtResource("1_tree")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4, 0)
+shape = SubResource("CylinderShape3D_trunk")
+
+[node name="Trunk" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+mesh = SubResource("CylinderMesh_trunk")
+
+[node name="Leaves" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5.0, 0)
+mesh = SubResource("CylinderMesh_leaves")
+
+[node name="FireLight" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, 0)
+visible = false
+light_color = Color(1, 0.4, 0.1, 1)
+light_energy = 2.0
+light_indirect_energy = 0.2
+light_specular = 0.5
+light_range = 25.0
+shadow_enabled = true
+omni_range = 25.0
+omni_attenuation = 1.0
+
+[node name="CPUParticles3D" type="CPUParticles3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4, 0)
+emitting = false
+amount = 32
+lifetime = 1.5
+mesh = SubResource("QuadMesh_fire")
+direction = Vector3(0, 1, 0)
+spread = 30.0
+gravity = Vector3(0, 4, 0)
+initial_velocity_min = 1.0
+initial_velocity_max = 3.0
+scale_amount_min = 1.0
+scale_amount_max = 2.5
+color = Color(1, 0.6, 0.2, 1)

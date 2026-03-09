@@ -20,7 +20,8 @@ var peer = ENetMultiplayerPeer.new()
 @export var target_scene: PackedScene = preload("res://Target.tscn")
 @export var collectible_health_scene: PackedScene = preload("res://CollectibleHealth.tscn")
 @export var collectible_speed_scene: PackedScene = preload("res://CollectibleSpeed.tscn")
-@export var grass_patch_scene: PackedScene = preload("res://GrassPatch.tscn")
+@export var tree_scene: PackedScene = preload("res://Tree.tscn")
+@export var lightning_bolt_scene: PackedScene = preload("res://LightningBolt.tscn")
 
 # --- Environment Variables ---
 var noise = FastNoiseLite.new() # Used to generate random-looking but smooth terrain
@@ -32,7 +33,7 @@ var current_seed = 0
 
 # --- Day/Night Cycle Variables ---
 var time = 0.0
-var day_duration = 120.0 
+var day_duration = 480.0 # Doubled from 240.0 to make the cycle twice as long
 var sun: DirectionalLight3D
 var moon: DirectionalLight3D
 var world_env: WorldEnvironment
@@ -66,7 +67,7 @@ func _ready():
 	spawner.add_spawnable_scene(target_scene.resource_path)
 	spawner.add_spawnable_scene(collectible_health_scene.resource_path)
 	spawner.add_spawnable_scene(collectible_speed_scene.resource_path)
-	spawner.add_spawnable_scene(grass_patch_scene.resource_path)
+	spawner.add_spawnable_scene(tree_scene.resource_path)
 	add_child(spawner)
 	
 	create_multiplayer_ui()
@@ -100,6 +101,11 @@ func setup_lighting_and_sky():
 		var env = Environment.new()
 		var sky = Sky.new()
 		var sky_mat = ProceduralSkyMaterial.new()
+		
+		# Configure Sun for Sky Material (Fix Black Sun)
+		sky_mat.sun_angle_max = 5.0 # Larger sun disk
+		sky_mat.sun_curve = 0.05 # Softer bloom
+		
 		sky.sky_material = sky_mat
 		env.sky = sky
 		env.background_mode = Environment.BG_SKY
@@ -111,6 +117,10 @@ func setup_lighting_and_sky():
 	else:
 		sun = DirectionalLight3D.new(); sun.name = "Sun"
 		sun.shadow_enabled = true; add_child(sun)
+	
+	# Ensure Sun is warm yellow
+	sun.light_color = Color(1.0, 0.9, 0.7)
+	sun.light_energy = 1.0
 		
 	# Find or create the Moon
 	if has_node("Moon"):
@@ -130,7 +140,17 @@ func update_day_night_cycle(delta):
 	# Change light intensity based on height (dark at night)
 	var sun_height = sin(angle)
 	sun.light_energy = clamp(sun_height * 2.0, 0.0, 1.2)
+	sun.visible = sun_height > 0 # Hide sun when below horizon to prevent under-lighting
+	
 	moon.light_energy = clamp(-sun_height * 2.0, 0.0, 0.7)
+	moon.visible = sun_height < 0 # Hide moon when it's day
+	
+	# Update Sky / Ambient Light so it gets dark at night
+	if world_env and world_env.environment:
+		# Fade sky brightness as sun goes down
+		var sky_brightness = clamp(sun_height + 0.3, 0.05, 1.0) # Never pitch black (moonlight)
+		world_env.environment.background_energy_multiplier = sky_brightness
+		world_env.environment.ambient_light_energy = sky_brightness
 
 # UI for Connecting and Spawning
 var connection_ui: Control
@@ -205,7 +225,7 @@ func start_game_with_seed():
 		scatter_targets(60)
 		scatter_mammoths(40)
 		scatter_collectibles(80)
-		spawn_dense_grass()
+		spawn_forest()
 
 # Client joins a host
 func start_join():
@@ -230,11 +250,46 @@ func initialize_world(seed_val):
 	seed(seed_val)
 	noise.seed = seed_val
 	
-	# Clear old terrain if any (though usually runs once)
+	# Clear old terrain if any
 	if has_node("Terrain"):
 		$Terrain.queue_free()
 	if has_node("MustardLake"):
 		$MustardLake.queue_free()
+	
+	# OPTIMIZATION: Clear all existing spawned objects
+	tree_grid.clear()
+	active_fires.clear()
+	
+	for child in get_children():
+		# Networked Objects (Managed by Spawner)
+		# Only the Server should delete these. The deletion will propagate to clients automatically.
+		# If Clients delete them here, they disappear but the Server thinks they still exist (desync).
+		if child.name.begins_with("Tree_") or \
+		   child.name.begins_with("Mammoth_") or \
+		   child.name.begins_with("Target_") or \
+		   child.name.begins_with("Collectible_"):
+			if multiplayer.is_server():
+				child.queue_free()
+		
+		# Local Deterministic Objects (Not networked)
+		# Everyone must delete these to avoid duplicates
+		elif child.name == "PretzelTree" or child.name == "CroutonRock": # Note: name might be "PretzelTree" or "PretzelTree2" if dupes?
+			# Actually, scatter functions create nodes named "PretzelTree". 
+			# Godot auto-renames duplicates to @PretzelTree@...
+			# Better to check checking begins_with or class if possible.
+			# But for now, let's rely on the fact that we clear Terrain.
+			pass # We rely on logic below or just clear everything not critical?
+			
+	# Cleanup static props (Pretzel/Crouton) - iterate again or combine
+	# Since scatter functions use add_child, and we want to clear them.
+	# Let's just look for them.
+	for child in get_children():
+		if "PretzelTree" in child.name or "CroutonRock" in child.name:
+			child.queue_free()
+			
+	# Reset spawn counter to prevent potential name collisions after cleanup (optional but clean)
+	# Note: This might cause issues if network packets are still in flight, but usually fine for a restart.
+	# spawn_id_counter = 0 
 		
 	# Generate terrain (this runs on everyone's computer)
 	create_terrain() 
@@ -283,7 +338,7 @@ func _spawn_node(data):
 		elif type == "target": return _spawn_target(data)
 		elif type == "collectible_health": return _spawn_collectible(data, collectible_health_scene)
 		elif type == "collectible_speed": return _spawn_collectible(data, collectible_speed_scene)
-		elif type == "grass_patch": return _spawn_grass(data)
+		elif type == "tree": return _spawn_tree(data)
 	return null
 
 # Logic to create a player node and position it
@@ -361,6 +416,9 @@ func create_terrain():
 	var st = SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	
+	# OPTIMIZATION: Check if resolution is too high given the object count
+	# With 1000s of objects, terrain generation might slow down startup
+	
 	for z in range(terrain_resolution + 1):
 		for x in range(terrain_resolution + 1):
 			var px = float(x) / terrain_resolution
@@ -391,6 +449,8 @@ func create_terrain():
 	
 	var mat = StandardMaterial3D.new()
 	mat.vertex_color_use_as_albedo = true
+	mat.roughness = 0.4
+	mat.metallic = 0.1
 	mesh_inst.material_override = mat
 	
 	var terrain = StaticBody3D.new()
@@ -434,7 +494,8 @@ func create_pretzel_tree_at(pos):
 	# Create a brown material for the pretzel tree
 	var mat = StandardMaterial3D.new()
 	mat.albedo_color = Color(0.6, 0.4, 0.2) # Pretzel brown
-	mat.roughness = 0.8
+	mat.roughness = 0.5
+	mat.metallic = 0.1
 	
 	# Simple cylinder for the trunk
 	var trunk_mesh = CylinderMesh.new()
@@ -490,7 +551,8 @@ func scatter_crouton_rocks(count):
 		
 		var mat = StandardMaterial3D.new()
 		mat.albedo_color = Color(0.85, 0.65, 0.3) # Toasted bread color
-		mat.roughness = 1.0 # Very rough like bread
+		mat.roughness = 0.6 # Reduced for reflections
+		mat.metallic = 0.1
 		
 		rock.mesh = mesh
 		rock.material_override = mat
@@ -519,15 +581,15 @@ func create_mammoth_at(pos):
 	spawn_id_counter += 1
 	spawner.spawn({"pos": pos, "type": "mammoth", "spawn_id": spawn_id_counter})
 
-func spawn_dense_grass():
-	# Iterate through the terrain grid to place grass densely
-	# We use a second noise layer to create "clusters" or "patches" of grass
-	var grass_noise = FastNoiseLite.new()
-	grass_noise.seed = noise.seed + 100 # Different seed for vegetation pattern
-	grass_noise.frequency = 0.05 # Higher frequency = smaller, more frequent clusters
-	grass_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
-
-	var step = 4 # Reduced density (was 1) to prevent spawning tens of thousands of grass nodes
+func spawn_forest():
+	# Iterate through the terrain grid to find forest clusters
+	var tree_noise = FastNoiseLite.new()
+	tree_noise.seed = noise.seed + 100
+	tree_noise.frequency = 0.02
+	
+	# Step size 20 (225 clusters)
+	var step = 20
+	
 	for z in range(0, terrain_resolution + 1, step):
 		for x in range(0, terrain_resolution + 1, step):
 			var px = float(x) / terrain_resolution
@@ -535,42 +597,71 @@ func spawn_dense_grass():
 			var wx = (px - 0.5) * terrain_size
 			var wz = (pz - 0.5) * terrain_size
 			
-			# Check if we are inside a grass cluster
-			var cluster_value = grass_noise.get_noise_2d(wx, wz)
-			if cluster_value < 0.6: continue # Stricter threshold (was 0.4) to spawn fewer patches
+			var noise_val = tree_noise.get_noise_2d(wx, wz)
+			if noise_val < -0.2: continue 
 			
-			# Add some randomness to position so it doesn't look like a perfect grid
-			var jitter_x = randf_range(-0.4, 0.4)
-			var jitter_z = randf_range(-0.4, 0.4)
+			# Check distance from edge (Mountains)
+			var dist_x = abs(wx) / (terrain_size / 2.0)
+			var dist_z = abs(wz) / (terrain_size / 2.0)
+			var dist_edge = max(dist_x, dist_z)
 			
-			# Recalculate world pos with jitter
-			var final_wx = wx + jitter_x
-			var final_wz = wz + jitter_z
+			# Don't spawn trees on the mountain walls (edge > 0.8)
+			if dist_edge > 0.8: continue
 			
-			# Get height from unified height function
-			var y = get_height_at(final_wx, final_wz)
-			
-			# Only spawn above water level
-			if y > lake_level + 0.5:
-				spawn_id_counter += 1
-				spawner.spawn({"pos": Vector3(final_wx, y, final_wz), "type": "grass_patch", "spawn_id": spawn_id_counter})
+			# Spawn a cluster of trees
+			var cluster_count = randi_range(15, 25)
+			for i in range(cluster_count):
+				var offset_x = randf_range(-8.0, 8.0) # Spread out a bit more for trees
+				var offset_z = randf_range(-8.0, 8.0)
+				
+				var tree_x = wx + offset_x
+				var tree_z = wz + offset_z
+				
+				# Re-check edge for individual trees in case offset pushes them into wall
+				var t_dist_x = abs(tree_x) / (terrain_size / 2.0)
+				var t_dist_z = abs(tree_z) / (terrain_size / 2.0)
+				if max(t_dist_x, t_dist_z) > 0.85: continue
+				
+				var y = get_height_at(tree_x, tree_z)
+				
+				if y > lake_level + 0.5:
+					spawn_id_counter += 1
+					spawner.spawn({"pos": Vector3(tree_x, y, tree_z), "type": "tree", "spawn_id": spawn_id_counter})
 
-func create_grass_at(pos):
+func create_tree_at(pos):
 	spawn_id_counter += 1
-	spawner.spawn({"pos": pos, "type": "grass_patch", "spawn_id": spawn_id_counter})
+	spawner.spawn({"pos": pos, "type": "tree", "spawn_id": spawn_id_counter})
 
-func _spawn_grass(data):
+func _spawn_tree(data):
 	var pos = data["pos"]
 	var spawn_id = data["spawn_id"]
-	var grass = grass_patch_scene.instantiate()
-	grass.name = "GrassPatch_" + str(spawn_id)
-	grass.position = pos
-	return grass
+	var tree = tree_scene.instantiate()
+	tree.name = "Tree_" + str(spawn_id)
+	tree.position = pos
+	
+	# Register in spatial hash
+	if multiplayer.is_server():
+		var gx = round(pos.x / grid_size)
+		var gz = round(pos.z / grid_size)
+		tree_grid[Vector2i(gx, gz)] = tree
+		
+	return tree
 
 # --- DYNAMIC SPAWNING ---
 var spawn_timer = 0.0
 var spawn_interval = 2.0 
 var max_enemies = 50 
+
+# --- LIGHTNING LOGIC ---
+var lightning_timer = 0.0
+var lightning_interval = 25.0 # Much less frequent
+
+# --- FIRE LOGIC (Centralized) ---
+var fire_timer = 0.0
+var fire_interval = 0.5
+var tree_grid = {} # Key: Vector2i, Value: Tree Node
+var active_fires = [] # List of burning Tree nodes
+var grid_size = 4.0 # Larger grid for trees
 
 func _physics_process(delta):
 	# Check if multiplayer peer is valid before checking server status
@@ -588,6 +679,98 @@ func _physics_process(delta):
 		if spawn_timer >= spawn_interval:
 			spawn_timer = 0.0
 			try_spawn_random_enemy()
+			
+		# Lightning Strikes
+		lightning_timer += delta
+		if lightning_timer >= lightning_interval:
+			lightning_timer = 0.0
+			attempt_lightning_strike()
+			
+		# Fire Spread & Damage
+		fire_timer += delta
+		if fire_timer >= fire_interval:
+			fire_timer = 0.0
+			process_fire_spread()
+
+func register_burning_tree(tree):
+	if tree not in active_fires:
+		active_fires.append(tree)
+
+func process_fire_spread():
+	# 1. Spread Fire
+	var current_fires = active_fires.duplicate()
+	for tree in current_fires:
+		var gx = round(tree.position.x / grid_size)
+		var gz = round(tree.position.z / grid_size)
+		
+		var neighbors = [Vector2i(gx+1, gz), Vector2i(gx-1, gz), Vector2i(gx, gz+1), Vector2i(gx, gz-1)]
+		
+		for n_key in neighbors:
+			if tree_grid.has(n_key):
+				var neighbor = tree_grid[n_key]
+				if is_instance_valid(neighbor) and not neighbor.is_lit:
+					if randf() < 0.2:
+						neighbor.ignite.rpc()
+	
+	# 2. Damage Players
+	for child in get_children():
+		if child.name.is_valid_int() and child.has_method("take_damage"):
+			var px = round(child.position.x / grid_size)
+			var pz = round(child.position.z / grid_size)
+			var p_key = Vector2i(px, pz)
+			
+			var is_burning = false
+			var check_keys = [p_key, Vector2i(px+1, pz), Vector2i(px-1, pz), Vector2i(px, pz+1), Vector2i(px, pz-1)]
+			
+			for key in check_keys:
+				if tree_grid.has(key):
+					var t = tree_grid[key]
+					if is_instance_valid(t) and t.is_lit:
+						is_burning = true
+						break
+			
+			if is_burning:
+				child.take_damage.rpc(10.0)
+
+func attempt_lightning_strike():
+	# Find all trees
+	var trees = []
+	for child in get_children():
+		if child.name.begins_with("Tree_"):
+			trees.append(child)
+	
+	if trees.size() > 0:
+		var target_tree = trees.pick_random()
+		trigger_lightning_at.rpc(target_tree.position, target_tree.get_path())
+
+@rpc("call_local", "reliable")
+func trigger_lightning_at(pos, target_path = null):
+	# 1. Spawn Visuals
+	var bolt = lightning_bolt_scene.instantiate()
+	add_child(bolt)
+	bolt.position = pos
+	
+	# 2. Check for Grass Ignition (Server Only)
+	if multiplayer.is_server():
+		# Method A: Direct Node Reference (Most Reliable since we picked it)
+		if target_path:
+			var node = get_node_or_null(target_path)
+			if node and node.has_method("ignite"):
+				node.ignite.rpc()
+				return
+		
+		# Method B: Physics Fallback (if for some reason path is invalid or old code calls this)
+		var space_state = get_world_3d().direct_space_state
+		var query = PhysicsPointQueryParameters3D.new()
+		query.position = pos + Vector3(0, 0.5, 0) # Check slightly above ground
+		query.collision_mask = 2 # Grass layer
+		query.collide_with_areas = true
+		query.collide_with_bodies = true
+		
+		var result = space_state.intersect_point(query)
+		for hit in result:
+			if hit.collider.has_method("ignite"):
+				hit.collider.ignite.rpc()
 
 func try_spawn_random_enemy():
 	var current_enemies = 0

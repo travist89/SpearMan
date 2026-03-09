@@ -40,12 +40,13 @@ To test the multiplayer on your own computer, you need to run two or more instan
 - **Combat**: 
   - **Spear**: Sticks to enemies/walls. High accuracy.
   - **Rock**: Knocks enemies back. Bounces.
-  - **Fire Spear**: Ignites grass patches and enemies.
+- **Fire Spear**: Ignites trees and enemies.
 - **Enemies**: 
   - **Mammoth**: Large megafauna that charges players. Can be headshot for extra effect.
 - **Environment**:
-  - **Grass**: Can catch fire and spread damage.
+  - **Trees**: Interactive forests that can catch fire from Lightning or Fire Spears, spreading fire and damage.
   - **Mustard Lakes**: Water bodies at low elevations.
+  - **Weather**: Dynamic lightning strikes that can hit and ignite trees.
 - **Collectibles**: Red items restore health, Green items give a temporary speed boost.
 
 ## Documentation

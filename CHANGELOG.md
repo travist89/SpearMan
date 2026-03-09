@@ -3,6 +3,11 @@
 ## [Unreleased] - 2026-03-07
 
 ### Added
+- **World & Environment Updates:**
+  - Added interactive `Tree` objects to generate forests, replacing dense grass patches.
+  - Implemented dynamic `LightningBolt` mechanics that strike trees and ignite them.
+  - Upgraded world visuals with SDFGI (Global Illumination), SSR (Screen Space Reflections), and enhanced Glow.
+  - Improved Day/Night cycle lighting to hide the sun/moon below the horizon and adjust sky brightness.
 - **Mammoth Enemy Improvements:**
   - Added randomized tail length and girth scaling (synced over network).
   - Implemented body part-specific hit detection (Head, Tail, Legs) by reparenting collision shapes to visual bones.
@@ -13,8 +18,8 @@
   - Unified terrain height calculation logic (`get_height_at`) to ensure objects (Trees, Rocks, Grass) snap perfectly to the ground.
   - Added "Mustard Lakes" (yellow water) at low elevations.
 - **Combat & Gameplay:**
-  - Added "Fire Spear" weapon (switched via keys 1-3).
-  - Added "Grass Patch" logic: grass catches fire from Fire Spears, spreads to neighbors, and damages entities standing in it.
+  - Added "Fire Spear" weapon (switched via keys 1-3) with an attached `OmniLight3D` for dynamic lighting.
+  - Updated fire mechanics: Trees now catch fire from Lightning or Fire Spears, spread fire to neighboring trees, and damage entities standing near them.
   - Added "Rock" weapon with knockback physics.
   - Added "Collectible" items (Health and Speed) with proper server-side validation.
 - **Documentation:**
@@ -23,7 +28,8 @@
 ### Changed
 - **Removed Cat Enemy:** The generic `Cat.gd` and `Enemy.tscn` have been removed in favor of the more complex Mammoth AI.
 - **Optimization:**
-  - Reduced Grass Patch density significantly to improve performance.
+  - Replaced dense grass patches with a spatial grid-based `Tree` forest generation for better performance.
+  - Optimized world initialization by cleaning up existing spawned objects efficiently.
   - Implemented AI tick rate throttling (Mammoths update logic 5 times/second instead of 60).
   - Added players to a "players" group for faster lookup by AI.
 - **Refactoring:**

@@ -10,7 +10,7 @@ height = 1.5
 albedo_color = Color(1, 0, 0, 1)
 emission_enabled = true
 emission = Color(1, 0.3, 0, 1)
-emission_energy_multiplier = 2.0
+emission_energy_multiplier = 1.0
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_1"]
 material = SubResource("StandardMaterial3D_1")
@@ -46,6 +46,16 @@ shape = SubResource("CapsuleShape3D_1")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0, 0)
 mesh = SubResource("CapsuleMesh_1")
+
+[node name="FireLight" type="OmniLight3D" parent="."]
+light_color = Color(1, 0.4, 0.1, 1)
+light_energy = 0.5
+light_indirect_energy = 0.2
+light_specular = 0.5
+light_range = 10.0
+shadow_enabled = true
+omni_range = 10.0
+omni_attenuation = 1.0
 
 [node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
 replication_config = SubResource("SceneReplicationConfig_s")

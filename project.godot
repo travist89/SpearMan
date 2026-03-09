@@ -26,6 +26,11 @@ click={
 
 3d/physics_engine="Jolt Physics"
 
+[display]
+
+window/vsync/vsync_mode=1
+window/energy_saving/keep_screen_on=false
+
 [rendering]
 
 rendering_device/driver.windows="d3d12"
