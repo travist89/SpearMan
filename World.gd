@@ -165,9 +165,27 @@ func create_multiplayer_ui():
 	connection_ui = VBoxContainer.new()
 	canvas.add_child(connection_ui)
 	connection_ui.position = Vector2(20, 100)
+	
+	# Add some basic sizing to make sure everything is visible
+	connection_ui.custom_minimum_size = Vector2(250, 0)
+	
 	var host_btn = Button.new(); host_btn.text = "Host Game"
+	host_btn.custom_minimum_size = Vector2(0, 40)
 	host_btn.pressed.connect(start_host); connection_ui.add_child(host_btn)
+	
+	var spacer = Control.new()
+	spacer.custom_minimum_size = Vector2(0, 20)
+	connection_ui.add_child(spacer)
+	
+	var ip_label = Label.new(); ip_label.text = "Host IP Address to Join:"
+	connection_ui.add_child(ip_label)
+	
+	var ip_input = LineEdit.new(); ip_input.placeholder_text = "127.0.0.1"; ip_input.name = "IPInput"
+	ip_input.custom_minimum_size = Vector2(0, 30)
+	connection_ui.add_child(ip_input)
+	
 	var join_btn = Button.new(); join_btn.text = "Join Game"
+	join_btn.custom_minimum_size = Vector2(0, 40)
 	join_btn.pressed.connect(start_join); connection_ui.add_child(join_btn)
 	
 	# Menu for Seed Entry
@@ -230,7 +248,13 @@ func start_game_with_seed():
 # Client joins a host
 func start_join():
 	if peer.get_connection_status() != MultiplayerPeer.CONNECTION_DISCONNECTED: return
-	peer.create_client("127.0.0.1", 13579) # Connect to localhost
+	
+	var ip = "127.0.0.1"
+	var ip_input_node = connection_ui.get_node_or_null("IPInput")
+	if ip_input_node and ip_input_node.text.strip_edges() != "":
+		ip = ip_input_node.text.strip_edges()
+		
+	peer.create_client(ip, 13579)
 	multiplayer.multiplayer_peer = peer
 	
 	connection_ui.visible = false

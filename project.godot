@@ -11,8 +11,13 @@ config_version=5
 [application]
 
 config/name="TestVibeGame"
+run/main_scene="uid://bqkgrox02hxmd"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
+
+[display]
+
+window/energy_saving/keep_screen_on=false
 
 [input]
 
@@ -25,11 +30,6 @@ click={
 [physics]
 
 3d/physics_engine="Jolt Physics"
-
-[display]
-
-window/vsync/vsync_mode=1
-window/energy_saving/keep_screen_on=false
 
 [rendering]
 
