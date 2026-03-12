@@ -39,6 +39,17 @@ To ensure smooth animations on clients despite network interpolation gaps (where
 When using `MultiplayerSpawner` to manage networked objects:
 - **Server Only**: `queue_free()` must **ONLY** be called on the Server. The `MultiplayerSpawner` will automatically detect the deletion and replicate the despawn to all clients.
 - **Avoid Manual Despawn**: Clients should **NEVER** manually `queue_free()` networked objects (even in RPCs like `die()`), as this creates "ghost" objects that the spawner can no longer track or delete.
+- **MultiplayerSpawner Hierarchy**: The `spawn_path` must point to the root node (e.g. the World node, `".."`), so spawned objects become direct children of the World (siblings of the spawner). This is critical because World logic often iterates over `get_children()`. If `spawn_path` was `"."` (default), enemies would be children of the Spawner, breaking the count logic and causing infinite spawning loops and network floods.
+
+### 6. Authoritative AI Visuals
+When an AI unit (like the Mammoth) dies, you might want to stop physics processing but keep the `CollisionShape3D` and visual model intact for animations (like falling over).
+- **VisualRoot vs PhysicsRoot**: Rotating the root `CharacterBody3D` during death causes problems if server-side AI logic (like `look_at`) runs before physics is fully disabled. To fix this, create a separate `VisualRoot` node to house all meshes. During death, animate/rotate only the `VisualRoot`.
+- **Sync Safety**: When killing a networked AI, immediately disable its `MultiplayerSynchronizer` by setting its `replication_config` to an empty `SceneReplicationConfig.new()` and calling `queue_free()`. This prevents any delayed rotation/position updates from the server from overriding your local death animation tween.
+
+### 7. Sticking Projectiles
+To make a projectile "stick" to a moving target (like an Enemy):
+- **Do not use reparent()**: If the projectile was spawned by a `MultiplayerSpawner` under the root World node, reparenting it directly to the enemy will cause the spawner to lose track of it, despawning it on all clients.
+- **Use RemoteTransform3D**: Instead, create a `Node3D` pivot at the impact location on the target. Add a `RemoteTransform3D` to this pivot, and set its `remote_path` to the projectile. Freeze the projectile physically, and the RemoteTransform will push the target's movement/rotation updates directly to the projectile without altering the scene hierarchy.
 
 ---
 

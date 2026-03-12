@@ -1,5 +1,4 @@
 # Spear Projectile for "Age of Manwe"
-# This script handles the flight and collision of a thrown spear.
 extends RigidBody3D
 
 @export var damage = 10
@@ -7,72 +6,42 @@ extends RigidBody3D
 @export var is_fire_spear = false
 
 func _ready():
-	# Rigidbody3D setup for collision detection
 	contact_monitor = true
 	max_contacts_reported = 1
-	# Connect the "body_shape_entered" signal to capture specific body parts
 	connect("body_shape_entered", _on_body_shape_entered)
-	# Also connect "body_entered" for simpler bodies or non-shape events
 	connect("body_entered", _on_body_entered)
 	
-	# If we want the spear to start with a specific speed, 
-	# we can pass it through "metadata" when spawning.
 	if has_meta("initial_velocity"):
 		linear_velocity = get_meta("initial_velocity")
 
-# New function to handle specific body part collision (for Mammoths/Enemies with parts)
 func _on_body_shape_entered(body_rid, body, body_shape_index, local_shape_index):
 	if not multiplayer.is_server(): return
 	
-	# Only process enemies here (CharacterBody3D that take damage and aren't players)
 	if body is CharacterBody3D and body.has_method("take_damage") and not body.name.is_valid_int():
-		# Find the specific collision shape node that was hit
 		var owner_id = body.shape_find_owner(body_shape_index)
 		var shape_node = body.shape_owner_get_owner(owner_id)
 		
-		# If we found a specific shape node, stick to THAT instead of the body root
 		if shape_node:
 			body.take_damage(damage)
 			stick_to_target.rpc(shape_node.get_path())
-			# We handled the hit, so disable further processing for this frame/collision
-			# But since body_entered might also fire, we need to be careful not to double damage.
-			# Simplest way is to check if we are already frozen/processed.
 			return
 
-# This function is called when the spear hits something (Fallback or for non-shape bodies)
 func _on_body_entered(body):
-	# If we already processed a shape hit (and froze), don't process body_entered
 	if freeze: return
-
-	# --- MULTIPLAYER SECURITY ---
-	# Only the server should handle game logic like dealing damage.
-	# This prevents cheating and ensuring everyone sees the same outcome.
 	if not multiplayer.is_server(): return
 
-	# Check if we hit something that can take damage
 	if body.has_method("take_damage"):
-		# In this game, spears only hurt AI enemies (non-player nodes).
-		# Player nodes have integer names (Peer IDs).
 		if not body.name.is_valid_int():
 			body.take_damage(damage)
-			# Stick to the enemy root as fallback
 			stick_to_target.rpc(body.get_path())
 			return
 
-	# If this is a Fire Spear and the object is flammable (like GrassPatch)
 	if is_fire_spear and body.has_method("ignite"):
 		body.ignite.rpc()
 
-	# If we hit an explosive target or enemy
 	if body.has_method("explode"):
-		# Trigger the explosion RPC for everyone
-		# Pass the owner_id if available, so the target knows who killed it
 		if has_meta("owner_id"):
 			var owner_id = get_meta("owner_id")
-			# Check if the explode method accepts an argument (Target.gd will)
-			# Enemy.gd might not, so we need to be careful.
-			# Actually, we can just update both Target.gd and Enemy.gd to accept an optional argument.
-			# Or we can check if it's a Target.
 			if body.name.begins_with("Target"):
 				body.explode.rpc(owner_id)
 			else:
@@ -82,8 +51,6 @@ func _on_body_entered(body):
 		queue_free()
 		return
 
-	# "Sticky" physics logic:
-	# If we hit the ground or a wall, stop moving and stay stuck there!
 	if body is StaticBody3D or body is CSGShape3D:
 		stick_to_target.rpc(body.get_path())
 
@@ -100,21 +67,15 @@ func _perform_stick(target):
 	freeze = true
 	$CollisionShape3D.disabled = true
 	
-	# If we hit the world geometry (StaticBody3D), we don't need to do anything else.
 	if target is StaticBody3D or target is CSGShape3D:
 		return
 
-	# If we hit a moving target (like an Enemy), we need to stick to it.
-	# However, we CANNOT use reparent(), because the Spear is spawned by MultiplayerSpawner.
-	# Reparenting it out of the World node will cause it to be despawned on clients.
-	# Instead, we use a RemoteTransform3D on the target to push its movement to the Spear.
-	
-	# Create a pivot node on the target at the location where the spear hit
+	# We use a RemoteTransform3D to stick to moving targets (like Enemies).
+	# See GODOT_NETWORKING_DOCS.md "Sticking Projectiles" for why reparent() is not used.
 	var pivot = Node3D.new()
 	target.add_child(pivot)
 	pivot.global_transform = global_transform
 	
-	# Add a RemoteTransform3D to the pivot
 	var remote = RemoteTransform3D.new()
 	pivot.add_child(remote)
 	remote.remote_path = get_path()

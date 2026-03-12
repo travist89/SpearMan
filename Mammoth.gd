@@ -1,9 +1,7 @@
 # Aggressive Megafauna AI for "Age of Manwe"
-# Mammoths are powerful creatures that will chase and damage players.
-# Like the regular Enemy, this logic only runs on the Server in multiplayer.
+# Server-authoritative logic for Mammoths.
 extends CharacterBody3D
 
-# Exported variables for tweaking Mammoth behavior in the Editor
 @export var speed = 3.0
 @export var run_speed = 8.0
 @export var detection_radius = 25.0
@@ -36,14 +34,10 @@ var visual_root: Node3D
 var sync_pairs = []
 
 func _ready():
-	# Ensure the mammoth only collides with Layer 1
-	# and ignores Layer 2 (Grass), so they don't get stuck on grass patches.
 	collision_mask = 1 
 	
-	# FIX: Create a VisualRoot to separate visual rotation (death) from physics rotation (movement).
-	# This prevents the Host-side physics logic (specifically look_at()) from resetting the
-	# death rotation (lying on side) back to upright. By rotating VisualRoot for death,
-	# the root node can spin/reset freely without standing the model back up.
+	# Create a VisualRoot to separate visual rotation from physics rotation.
+	# See GODOT_NETWORKING_DOCS.md "Authoritative AI Visuals" for details.
 	visual_root = Node3D.new()
 	visual_root.name = "VisualRoot"
 	add_child(visual_root)
@@ -75,8 +69,7 @@ func _ready():
 		if node:
 			node.reparent(visual_root)
 
-	# Setup collision syncing for Body and Legs (since we can't reparent them safely)
-	# Body
+	# Setup collision syncing for parts that cannot be safely reparented
 	var col_body = get_node_or_null("CollisionShape3D")
 	var vis_body = get_node_or_null("VisualRoot/Body")
 	if col_body and vis_body:
@@ -89,13 +82,10 @@ func _ready():
 		if col_leg and vis_leg:
 			sync_pairs.append({"col": col_leg, "vis": vis_leg})
 	
-	# --- MULTIPLAYER LOGIC ---
-	# Only the server should handle Mammoth AI and movement.
-	# This ensures the Mammoth is in the same place for all players.
 	setup_animations()
 	
 	if not multiplayer.is_server():
-		set_physics_process(false)
+		set_physics_process(false) # AI logic only runs on Server
 
 func update_tail_scale():
 	var tail = get_node_or_null("VisualRoot/Tail")
@@ -388,36 +378,25 @@ func _process(delta):
 				if anim_player.current_animation != "Idle" and anim_player.current_animation != "RearUp":
 					anim_player.play("Idle", 0.2)
 
-# Called by projectiles or rocks
 func take_damage(amount):
 	if is_dead: return
 	if not multiplayer.is_server(): return
 	health -= amount
 	
-	# The mammoth gets scared and runs away (flee) when hit
-	# BUT only if it's not currently busy rearing up!
-	# Also, we explicitly check if the animation player is playing RearUp to be extra safe
 	var is_rearing = state == "rear_up" or (anim_player and anim_player.current_animation == "RearUp")
 	
 	if state != "flee" and not is_rearing:
 		state = "flee"
-		# Force an immediate AI update on the next physics frame.
-		# This ensures that if the player is close enough to trigger a "RearUp",
-		# the AI will switch to "RearUp" BEFORE the "flee" movement logic (which turns 180) has a chance to run.
-		tick_timer = tick_rate
-		
-		# Stop fleeing after 2 seconds if still alive
+		tick_timer = tick_rate # Force immediate AI update
 		get_tree().create_timer(2.0).timeout.connect(func(): if not is_dead and state == "flee": state = "chase")
 	
 	if health <= 0:
 		# Call the death RPC so everyone sees the mammoth die
 		die.rpc()
 
-# Finds the nearest player node in the scene
 func find_nearest_player():
 	var nearest = null
 	var min_dist = INF
-	# Optimized: Use group lookup instead of iterating all world children
 	var players = get_tree().get_nodes_in_group("players")
 	for node in players:
 		# Ignore dead players
@@ -434,7 +413,6 @@ var tick_timer = 0.0
 var tick_rate = 0.2 # AI updates 5 times per second instead of 60
 
 func _physics_process(delta):
-	# Robust check for death state to ensure no movement/animation runs after death
 	if is_dead or health <= 0 or state == "dead":
 		velocity = Vector3.ZERO
 		return
@@ -541,63 +519,44 @@ func _physics_process(delta):
 			anim_player.play("Idle")
 	
 	# --- Attack Logic ---
-	# Handle damage via direct physical collision. 
-	# This ensures the mammoth deals damage if it runs into a player.
 	for i in range(get_slide_collision_count()):
 		var collision = get_slide_collision(i)
 		var body = collision.get_collider()
-		# Only damage nodes that represent real players (integer names)
 		if body.has_method("take_damage") and body.name.is_valid_int():
-			# Trigger the damage RPC on the player so the client sees it!
 			body.take_damage.rpc(damage * delta)
 
-# RPC to play the rear up animation on all clients
 @rpc("call_local", "reliable")
 func play_rearing_animation():
 	if anim_player:
 		anim_player.play("RearUp")
 
-# RPC to handle Mammoth death across the network
 @rpc("any_peer", "call_local", "reliable")
 func die():
 	if not is_inside_tree() or is_dead: return
-	print("Mammoth Died!")
 	is_dead = true
 	state = "dead"
 	
-	# FIX: Stop physics processing immediately to prevent movement
-	# But KEEP _process running so collision shapes continue to sync with the death tween!
 	set_physics_process(false)
 	velocity = Vector3.ZERO
-	
-	# FIX: Disable collisions immediately to prevents physics interactions
 	collision_layer = 0
 	collision_mask = 0
 	
-	# FIX: Disable the MultiplayerSynchronizer to stop rotation updates from server
-	# colliding with our local death animation tween.
+	# Disable MultiplayerSynchronizer safely to prevent rotation reset
+	# See GODOT_NETWORKING_DOCS.md "Authoritative AI Visuals"
 	var synchronizer = get_node_or_null("MultiplayerSynchronizer")
 	if synchronizer:
-		# queue_free() is deferred, so one last sync packet might slip through and reset rotation.
-		# Setting config to null causes C++ errors.
-		# BEST FIX: Set it to an empty config. This stops sync immediately and safely.
 		synchronizer.replication_config = SceneReplicationConfig.new()
 		synchronizer.queue_free()
 	
-	# Stop animation and force play "Dead"
 	if anim_player:
 		anim_player.stop()
 		anim_player.clear_queue()
 		anim_player.play("Dead")
 		
-	# Disable all collision shapes
 	for child in get_children():
 		if child is CollisionShape3D:
 			child.disabled = true
 			
-	# FIX: Create a tween to rotate the visual model independently of the physics root.
-	# This ensures that even if physics logic (like look_at) resets the root rotation,
-	# the visual model stays fallen over.
+	# Rotate the visual model independently of the physics root
 	var tween = create_tween()
-	# Rotate the VisualRoot around Z axis to make the mammoth fall on its side
 	tween.tween_property(visual_root, "rotation:z", PI/2, 1.0).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)

@@ -1,19 +1,15 @@
 # Main Player Controller for "Age of Manwe"
-# This script handles everything a player can do: moving, looking around, jumping, 
-# shooting projectiles, taking damage, and dying. It also handles networking
-# to ensure players see each other correctly in multiplayer.
+# Handles movement, input, health/stamina, and networking.
 extends CharacterBody3D
 
-# @export variables are visible in the Godot Editor inspector, 
-# making it easy to tweak values without changing code.
 @export var speed = 15.0
 @export var sprint_speed = 30.0
 @export var jump_velocity = 10.0
 @export var mouse_sensitivity = 0.003
 @export var throw_force = 45.0
-@export var spear_scene: PackedScene # Reference to the Spear prefab
-@export var rock_scene: PackedScene = preload("res://Rock.tscn") # Preloads the Rock prefab
-@export var fire_spear_scene: PackedScene = preload("res://FireSpear.tscn") # Preloads the Fire Spear prefab
+@export var spear_scene: PackedScene
+@export var rock_scene: PackedScene = preload("res://Rock.tscn")
+@export var fire_spear_scene: PackedScene = preload("res://FireSpear.tscn")
 
 # --- Player State Variables ---
 var weapons = ["Spear", "Rock", "Fire Spear"]
@@ -45,39 +41,29 @@ var score_label: Label
 # Get the gravity setting from the project settings so it matches the rest of the game
 var gravity = ProjectSettings.get_setting("physics/3d/default_gravity")
 
-# @onready variables are initialized when the node enters the scene tree for the first time
 @onready var camera_pivot = $CameraPivot
 @onready var camera = $CameraPivot/SpringArm3D/Camera3D
 @onready var hand_position = $HandPosition 
 
-# _enter_tree is called when the node is added to the scene. 
-# In multiplayer, we use the node name (set to Peer ID) to determine who controls this player.
 func _enter_tree():
-	# name.to_int() converts the peer ID (like "1" or "123456") to an integer
+	# In multiplayer, node name is the Peer ID. Establish authority.
 	var id = name.to_int()
-	if id == 0: id = 1 # Peer ID 1 is always the Host/Server
-	# set_multiplayer_authority tells Godot which peer is "in charge" of this node.
-	# Usually, each player controls their own character.
+	if id == 0: id = 1 # Host is 1
 	set_multiplayer_authority(id)
 
-# _ready is called after the node and all its children have entered the scene tree.
 func _ready():
-	# Add to players group for efficient lookups by AI
 	add_to_group("players")
 	
-	# Ensure the player only collides with Layer 1 (World/Walls/Enemies)
-	# and ignores Layer 2 (Grass), so they don't get stuck on grass patches.
+	# Only collide with World/Enemies (Layer 1), ignore Grass (Layer 2)
 	collision_mask = 1 
 	
 	setup_animations()
 	
-	# is_multiplayer_authority() check ensures only YOU control YOUR player.
 	if is_multiplayer_authority():
-		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED) # Lock mouse to center of screen
-		camera.current = true # Use this player's camera
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+		camera.current = true
 		setup_ui()
 	else:
-		# If this is someone else's player, don't use their camera!
 		camera.current = false
 
 func setup_animations():
@@ -167,10 +153,6 @@ func update_score_ui():
 	if score_label:
 		score_label.text = "Score: " + str(score)
 
-# @rpc marks this function as a Remote Procedure Call.
-# "any_peer" means any player can call it (needed for server to call it on clients).
-# "call_local" means it also runs on the machine that called it.
-# "reliable" means the network ensures it arrives (slower but safer).
 @rpc("any_peer", "call_local", "reliable")
 func take_damage(amount):
 	if is_dead: return
@@ -190,23 +172,21 @@ func add_score(amount):
 	score += amount
 	update_score_ui()
 
+@rpc("any_peer", "call_local", "reliable")
 func apply_speed_boost(multiplier, duration):
 	speed_boost_multiplier = multiplier
 	speed_boost_time = duration
 
-# When a player dies, they tell everyone they are dead and request a respawn.
 func die():
 	if is_dead: return
 	is_dead = true
 	
-	# Disable collision and hide player locally/immediately to prevent enemies from sticking
+	# Disable collision and hide instantly
 	collision_layer = 0
 	collision_mask = 0
 	visible = false
 	
-	# Only the owner of the player initiates the respawn RPC
 	if is_multiplayer_authority(): 
-		# Wait for a moment before respawning to let enemies reset
 		await get_tree().create_timer(2.0).timeout
 		respawn.rpc()
 
@@ -224,18 +204,12 @@ func respawn():
 	collision_mask = 1
 	visible = true
 
-# Handles mouse movement and keyboard shortcuts for non-movement actions
 func _unhandled_input(event):
-	# Optimization: Only the local player should process their own mouse/input.
 	if not is_multiplayer_authority(): return
 	
-	# Rotate camera based on mouse movement
 	if event is InputEventMouseMotion:
-		# Rotate the player horizontally (Left/Right)
 		rotate_y(-event.relative.x * mouse_sensitivity)
-		# Rotate the camera pivot vertically (Up/Down)
 		camera_pivot.rotate_x(-event.relative.y * mouse_sensitivity)
-		# Limit vertical rotation so the camera doesn't flip over
 		camera_pivot.rotation.x = clamp(camera_pivot.rotation.x, -1.2, 1.2)
 		
 	# Press Esc to show mouse cursor
@@ -268,15 +242,9 @@ func _unhandled_input(event):
 		weapon_index = 2
 		update_weapon_ui()
 
-# _physics_process is called every physics frame (usually 60 times per second)
 func _physics_process(delta):
-	# --- MULTIPLAYER OPTIMIZATION ---
-	# We only want to run movement logic for the machine that OWNS this player.
-	if not is_multiplayer_authority():
-		# For other players, do nothing. Position is handled by MultiplayerSynchronizer.
-		# calling move_and_slide() with 0 velocity (since velocity isn't synced)
-		# fights with the position sync and causes jitter.
-		return
+	if not is_multiplayer_authority(): return # Only run movement for local player
+
 
 	if is_dead: return
 
@@ -363,11 +331,8 @@ func play_attack_anim():
 	anim_player.play("Attack")
 	# After attack finishes, it will naturally fall back to Idle/Run in _process
 
-# Server-side logic for spawning projectiles
-# Spawning objects MUST be done on the server to ensure everyone sees the same thing.
 @rpc("any_peer", "call_local")
 func throw_projectile(type):
-	# Security: Only the server is allowed to actually instantiate nodes.
 	if not multiplayer.is_server(): return
 	
 	var projectile_scene = spear_scene

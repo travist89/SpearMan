@@ -47,11 +47,8 @@ func _ready():
 	# --- Setup Multiplayer Spawner ---
 	spawner = MultiplayerSpawner.new()
 	spawner.name = "MultiplayerSpawner" 
-	# FIX: spawn_path must point to the World node ("..") so spawned objects become
-	# direct children of World (siblings of the spawner). 
-	# This is critical because World.gd logic (like counting enemies) iterates over get_children().
-	# If spawn_path was "." (default), enemies would be children of the Spawner, breaking the count logic
-	# and causing infinite spawning loops and network floods.
+	# Spawns network objects as children of World ("..") rather than the Spawner (".")
+	# See GODOT_NETWORKING_DOCS.md "MultiplayerSpawner Hierarchy" for why this is critical.
 	spawner.spawn_path = ".." 
 	
 	# The spawn_function is called whenever we want to spawn something networked.
